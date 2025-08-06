@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Quake 3 Master Server</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <style>
+    body {
+      background-color: #111;
+      color: #ddd;
+      font-family: monospace;
+      padding: 2rem;
+    }
+    .q3name span {
+      white-space: pre;
+    }
+    table {
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Active Servers</h1>
+  <table class="table table-dark table-bordered table-hover">
+    <thead>
+      <tr>
+        <th>Hostname</th>
+        <th>Map</th>
+        <th>Players</th>
+        <th>Mod</th>
+        <th>Gametype</th>
+        <th>PB</th>
+        <th>Version</th>
+        <th>Player List</th>
+      </tr>
+    </thead>
+    <tbody id="server-table">
+    </tbody>
+  </table>
+
+  <script>
+    const colorMap = {
+      '0': 'white', '1': 'red', '2': 'green', '3': 'yellow',
+      '4': 'blue', '5': 'cyan', '6': 'pink', '7': 'white',
+      '8': 'gray', '9': 'black'
+    };
+
+    function parseNameColors(name) {
+      let result = '';
+      let color = 'white';
+      for (let i = 0; i < name.length; i++) {
+        if (name[i] === '^' && i + 1 < name.length) {
+          const code = name[i + 1];
+          if (colorMap[code]) {
+            color = colorMap[code];
+            i++;
+            continue;
+          }
+        }
+        result += `<span style="color:${color}">${name[i]}</span>`;
+      }
+      return result;
+    }
+
+    function refreshTable() {
+      $.getJSON("/api/servers", function (data) {
+        const tbody = $("#server-table").empty();
+        data.forEach(server => {
+            const players = (server.players || []).map(p => `<div class="q3name">${parseNameColors(p)}</div>`).join('');
+            tbody.append(`
+            <tr>
+                <td>${server.hostname}</td>
+                <td>${server.map}</td>
+                <td>${server.player_count}/${server.max_players}</td>
+                <td>${server.mod}</td>
+                <td>${server.gametype}</td>
+                <td>${server.pb}</td>
+                <td>${server.version}</td>
+                <td>${players}</td>
+            </tr>
+            `);
+        });
+      });
+    }
+
+    setInterval(refreshTable, 10000);
+    refreshTable();
+  </script>
+</body>
+</html>
