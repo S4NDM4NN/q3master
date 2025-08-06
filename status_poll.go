@@ -198,7 +198,8 @@ func fetchServersFromUpstreamMaster() {
 		}
 	}
 
-	fmt.Printf("Upstream master re
+	fmt.Printf("Upstream master returned %d total entries, %d new added\n", serverCount, addedCount)
+}
 
 func startUpstreamDiscovery() {
 	go func() {
