@@ -25,4 +25,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: repo.s4ndmod.com/S4NDMoD/q3master:latest
+          tags: repo.s4ndmod.com/s4ndmod/q3master:latest
