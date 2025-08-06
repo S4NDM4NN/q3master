@@ -141,6 +141,7 @@ func fetchServersFromUpstreamMaster() {
 	}
 	defer conn.Close()
 
+	// Send getservers request for RTCW protocol 60
 	request := []byte("\xff\xff\xff\xffgetservers 60\n")
 	_, err = conn.Write(request)
 	if err != nil {
@@ -148,47 +149,61 @@ func fetchServersFromUpstreamMaster() {
 		return
 	}
 
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	// Read all available responses (multi-packet)
+	var response []byte
 	buffer := make([]byte, 1400)
-	n, err := conn.Read(buffer)
-	if err != nil {
-		fmt.Printf("Failed to read response from upstream: %v\n", err)
+	for {
+		conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		n, err := conn.Read(buffer)
+		if err != nil {
+			break // timeout or end of data
+		}
+		response = append(response, buffer[:n]...)
+	}
+
+	if len(response) == 0 {
+		fmt.Println("No data received from upstream master.")
 		return
 	}
 
-	fmt.Printf("Got %d bytes from upstream master\n", n)
-
-	// Skip header: \xff\xff\xff\xffgetserversResponse\n
-	data := buffer
+	// Skip header if present
 	header := []byte("\xff\xff\xff\xffgetserversResponse\n")
-	if bytes.HasPrefix(data, header) {
-		data = data[len(header):]
+	if bytes.HasPrefix(response, header) {
+		response = response[len(header):]
 	}
 
-	// Parse 6-byte chunks (4 IP bytes, 2 port bytes)
-	for i := 0; i+6 <= len(data); i += 6 {
-		ip := net.IPv4(data[i], data[i+1], data[i+2], data[i+3])
-		port := int(data[i+4])<<8 | int(data[i+5])
-		addr := fmt.Sprintf("%s:%d", ip.String(), port)
+	// Parse 6-byte chunks: IP (4 bytes) + port (2 bytes)
+	serverCount := 0
+	addedCount := 0
 
-		// Skip invalid addresses
+	for i := 0; i+6 <= len(response); i += 6 {
+		ip := net.IPv4(response[i], response[i+1], response[i+2], response[i+3])
+		port := int(response[i+4])<<8 | int(response[i+5])
+		addr := fmt.Sprintf("%s:%d", ip.String(), port)
+		serverCount++
+
 		if ip.IsUnspecified() || ip.IsMulticast() || ip.IsLoopback() {
-			continue
+			continue // skip invalid addresses
 		}
 
 		serverMutex.Lock()
 		if _, exists := serverList[addr]; !exists {
 			udpAddr, err := net.ResolveUDPAddr("udp", addr)
 			if err == nil {
-				serverList[addr] = &GameServer{
+				newServer := &GameServer{
 					Addr:     udpAddr,
 					LastSeen: time.Now(),
 				}
+				serverList[addr] = newServer
+				addedCount++
 				fmt.Printf("Discovered new server from upstream: %s\n", addr)
+				go pollServerStatus(newServer)
 			}
 		}
 		serverMutex.Unlock()
 	}
+
+	fmt.Printf("Upstream master returned %d servers, %d added\n", serverCount, addedCount)
 }
 
 func startUpstreamDiscovery() {
