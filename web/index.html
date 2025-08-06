@@ -68,9 +68,10 @@
         const tbody = $("#server-table").empty();
         data.forEach(server => {
             const players = (server.players || []).map(p => `<div class="q3name">${parseNameColors(p)}</div>`).join('');
+            const hostname = parseNameColors(server.hostname);
             tbody.append(`
             <tr>
-                <td>${server.hostname}</td>
+                <td>${hostname}</td>
                 <td>${server.map}</td>
                 <td>${server.player_count}/${server.max_players}</td>
                 <td>${server.mod}</td>
