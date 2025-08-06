@@ -69,7 +69,7 @@ func pollServerStatus(server *GameServer) {
 		return
 	}
 
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	buffer := make([]byte, 4096)
 	n, _, err := conn.ReadFromUDP(buffer)
 	fmt.Printf("Got raw status from %s: %d bytes\n", addr.String(), n)
