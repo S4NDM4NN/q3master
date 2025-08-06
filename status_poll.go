@@ -55,31 +55,40 @@ func startServerPoller() {
 
 func pollServerStatus(server *GameServer) {
 	addr := server.Addr
-
 	fmt.Printf("Polling server %s\n", addr.String())
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
+		fmt.Printf("Failed to dial %s: %v\n", addr.String(), err)
 		return
 	}
 	defer conn.Close()
 
 	_, err = conn.Write([]byte("\xff\xff\xff\xffgetstatus\n"))
 	if err != nil {
+		fmt.Printf("Failed to write to %s: %v\n", addr.String(), err)
 		return
 	}
 
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	buffer := make([]byte, 4096)
 	n, _, err := conn.ReadFromUDP(buffer)
-	fmt.Printf("Got raw status from %s: %d bytes\n", addr.String(), n)
 
 	if err != nil {
+		fmt.Printf("Error reading from %s: %v\n", addr.String(), err)
 		return
 	}
 
+	if n == 0 {
+		fmt.Printf("Received empty response from %s\n", addr.String())
+		return
+	}
+
+	fmt.Printf("Got raw status from %s: %d bytes\n", addr.String(), n)
+
 	lines := strings.Split(string(buffer[:n]), "\n")
 	if len(lines) < 2 {
+		fmt.Printf("Invalid status response from %s\n", addr.String())
 		return
 	}
 
@@ -127,9 +136,10 @@ func pollServerStatus(server *GameServer) {
 		status.Hostname, status.Map, status.PlayerCount, status.MaxPlayers)
 
 	statusMutex.Lock()
-	fmt.Printf("Storing status in cache under key: %s\n", addr.String())
 	statusCache[addr.String()] = status
 	statusMutex.Unlock()
+
+	fmt.Printf("Stored status for %s in cache.\n", addr.String())
 }
 
 func fetchServersFromUpstreamMaster() {
