@@ -40,15 +40,19 @@ func startServerPoller() {
 		serverMutex.Unlock()
 
 		var wg sync.WaitGroup
+		semaphore := make(chan struct{}, 10) // max 10 concurrent polls
+
 		for _, srv := range servers {
 			wg.Add(1)
 			go func(s *GameServer) {
 				defer wg.Done()
+				semaphore <- struct{}{} // acquire a slot
 				pollServerStatus(s)
+				<-semaphore // release the slot
 			}(srv)
 		}
-		wg.Wait()
 
+		wg.Wait()
 		time.Sleep(pollInterval)
 	}
 }
