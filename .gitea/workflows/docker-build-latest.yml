@@ -1,0 +1,28 @@
+# .gitea/workflows/docker-build-push-latest.yml
+name: Build and Push Docker image to registry
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: login to container registry
+        uses: docker/login-action@v2
+        with:
+          registry: repo.s4ndmod.com
+          username: ${{secrets.REGISTRY_USER}}
+          password: ${{secrets.REGISTRY_PASSWORD}}
+      
+      - name: Build & push
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: repo.s4ndmod.com/S4NDMoD/q3master:latest
