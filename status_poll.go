@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"strings"
@@ -129,4 +130,72 @@ func pollServerStatus(server *GameServer) {
 	fmt.Printf("Storing status in cache under key: %s\n", addr.String())
 	statusCache[addr.String()] = status
 	statusMutex.Unlock()
+}
+
+func fetchServersFromUpstreamMaster() {
+	masterAddr := "wolfmaster.idsoftware.com:27950"
+	conn, err := net.Dial("udp", masterAddr)
+	if err != nil {
+		fmt.Printf("Failed to connect to upstream master: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	request := []byte("\xff\xff\xff\xffgetservers 60\n")
+	_, err = conn.Write(request)
+	if err != nil {
+		fmt.Printf("Failed to write to upstream master: %v\n", err)
+		return
+	}
+
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	buffer := make([]byte, 1400)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		fmt.Printf("Failed to read response from upstream: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Got %d bytes from upstream master\n", n)
+
+	// Skip header: \xff\xff\xff\xffgetserversResponse\n
+	data := buffer
+	header := []byte("\xff\xff\xff\xffgetserversResponse\n")
+	if bytes.HasPrefix(data, header) {
+		data = data[len(header):]
+	}
+
+	// Parse 6-byte chunks (4 IP bytes, 2 port bytes)
+	for i := 0; i+6 <= len(data); i += 6 {
+		ip := net.IPv4(data[i], data[i+1], data[i+2], data[i+3])
+		port := int(data[i+4])<<8 | int(data[i+5])
+		addr := fmt.Sprintf("%s:%d", ip.String(), port)
+
+		// Skip invalid addresses
+		if ip.IsUnspecified() || ip.IsMulticast() || ip.IsLoopback() {
+			continue
+		}
+
+		serverMutex.Lock()
+		if _, exists := serverList[addr]; !exists {
+			udpAddr, err := net.ResolveUDPAddr("udp", addr)
+			if err == nil {
+				serverList[addr] = &GameServer{
+					Addr:     udpAddr,
+					LastSeen: time.Now(),
+				}
+				fmt.Printf("Discovered new server from upstream: %s\n", addr)
+			}
+		}
+		serverMutex.Unlock()
+	}
+}
+
+func startUpstreamDiscovery() {
+	go func() {
+		for {
+			fetchServersFromUpstreamMaster()
+			time.Sleep(1 * time.Minute)
+		}
+	}()
 }
