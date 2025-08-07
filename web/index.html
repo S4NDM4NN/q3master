@@ -35,13 +35,14 @@
       margin-top: 0.5rem;
     }
     .info-label {
-      color: #aaa;
+      color: #999;
       font-size: 0.8rem;
     }
     .player-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
       gap: 0.5rem;
+      margin-top: 1rem;
     }
     .collapse.show {
       padding-top: 1rem;
@@ -105,25 +106,23 @@
               <div class="card-header">
                 <div class="header-line">
                   <div>
-                    <div class="q3name">${hostname}</div>
+                    <div class="q3name fs-5">${hostname}</div>
                     <div class="address"><code>${server.address}</code></div>
                   </div>
                   <div class="player-count">${server.player_count}/${server.max_players} players</div>
                 </div>
-                <div class="info-grid mt-3">
-                  <div><div class="info-label">Map</div><div>${server.map}</div></div>
-                  <div><div class="info-label">Mod</div><div>${server.mod}</div></div>
-                  <div><div class="info-label">Gametype</div><div>${server.gametype}</div></div>
+              </div>
+              <div class="card-body">
+                <div class="info-grid">
+                  <div><div class="info-label">Map</div>${server.map || '<em>unknown</em>'}</div>
+                  <div><div class="info-label">Mod</div>${server.mod || '<em>unknown</em>'}</div>
+                  <div><div class="info-label">Gametype</div>${server.gametype || '<em>unknown</em>'}</div>
+                  <div><div class="info-label">Version</div>${server.version || '<em>unknown</em>'}</div>
                 </div>
                 <button class="btn btn-sm btn-outline-light mt-3" data-bs-toggle="collapse" data-bs-target="#${collapseId}">
                   Show Players
                 </button>
-              </div>
-              <div id="${collapseId}" class="collapse">
-                <div class="card-body">
-                  <p><strong>Version:</strong> ${server.version}</p>
-                  <p><strong>PunkBuster:</strong> ${server.pb}</p>
-                  <p><strong>Players:</strong></p>
+                <div id="${collapseId}" class="collapse">
                   <div class="player-grid">
                     ${players || '<em>No players online</em>'}
                   </div>
@@ -140,3 +139,4 @@
   </script>
 </body>
 </html>
+
