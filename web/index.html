@@ -22,12 +22,21 @@
       margin-bottom: 1rem;
     }
     .card-header {
-      cursor: pointer;
       background-color: #222;
+      padding: 1rem;
     }
-    .card-header .server-info {
-      color: #ccc;
-      font-size: 0.85rem;
+    .card-body {
+      padding: 1rem 1.25rem;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .info-label {
+      color: #aaa;
+      font-size: 0.8rem;
     }
     .player-grid {
       display: grid;
@@ -39,7 +48,16 @@
     }
     .address {
       font-size: 0.9rem;
-      color: #aaa;
+      color: #bbb;
+    }
+    .header-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .player-count {
+      font-weight: bold;
+      color: #eee;
     }
   </style>
 </head>
@@ -84,21 +102,22 @@
 
           container.append(`
             <div class="card">
-              <div class="card-header" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
-                <div class="d-flex justify-content-between align-items-center">
+              <div class="card-header">
+                <div class="header-line">
                   <div>
                     <div class="q3name">${hostname}</div>
                     <div class="address"><code>${server.address}</code></div>
-                    <div class="server-info">
-                      Map: <strong>${server.map}</strong> |
-                      Mod: <strong>${server.mod}</strong> |
-                      Gametype: <strong>${server.gametype}</strong>
-                    </div>
                   </div>
-                  <div>
-                    <span>${server.player_count}/${server.max_players} players</span>
-                  </div>
+                  <div class="player-count">${server.player_count}/${server.max_players} players</div>
                 </div>
+                <div class="info-grid mt-3">
+                  <div><div class="info-label">Map</div><div>${server.map}</div></div>
+                  <div><div class="info-label">Mod</div><div>${server.mod}</div></div>
+                  <div><div class="info-label">Gametype</div><div>${server.gametype}</div></div>
+                </div>
+                <button class="btn btn-sm btn-outline-light mt-3" data-bs-toggle="collapse" data-bs-target="#${collapseId}">
+                  Show Players
+                </button>
               </div>
               <div id="${collapseId}" class="collapse">
                 <div class="card-body">
