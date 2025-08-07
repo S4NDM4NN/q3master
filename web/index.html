@@ -149,23 +149,23 @@
           `);
         });
       });
+      $('#server-filter').on('input', function () {
+        const query = $(this).val().toLowerCase();
+
+        $('.server-card').each(function () {
+          const $card = $(this);
+          const matches =
+            $card.data('hostname').includes(query) ||
+            $card.data('map').includes(query) ||
+            $card.data('mod').includes(query) ||
+            $card.data('gametype').includes(query) ||
+            $card.data('address').includes(query);
+
+          $card.toggle(matches);
+        });
+      });
     }
 
-    $('#server-filter').on('input', function () {
-      const query = $(this).val().toLowerCase();
-
-      $('.server-card').each(function () {
-        const $card = $(this);
-        const matches =
-          $card.data('hostname').includes(query) ||
-          $card.data('map').includes(query) ||
-          $card.data('mod').includes(query) ||
-          $card.data('gametype').includes(query) ||
-          $card.data('address').includes(query);
-
-        $card.toggle(matches);
-      });
-    });
 
     setInterval(refreshServers, 10000);
     refreshServers();
