@@ -159,7 +159,8 @@
             String($card.data('map') || '').includes(query) ||
             String($card.data('mod') || '').includes(query) ||
             String($card.data('gametype') || '').includes(query) ||
-            String($card.data('address') || '').includes(query);
+            String($card.data('address') || '').includes(query) ||
+            String($card.data('version') || '').includes(query);
 
           $card.toggle(matches);
         });
