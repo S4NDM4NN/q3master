@@ -53,7 +53,7 @@ func main() {
 		}
 	}()
 
-	http.HandleFunc("/api/servers", serveAPI)
+	http.HandleFunc("/api/servers", withCORS(serveAPI))
 	http.Handle("/", http.FileServer(http.Dir("web")))
 
 	port := os.Getenv("PORT")
@@ -63,6 +63,21 @@ func main() {
 	fmt.Println("Listening on :" + port)
 	http.ListenAndServe(":"+port, nil)
 }
+
+func withCORS(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next(w, r)
+	}
+}
+
 
 func refreshFromMaster() {
 	for _, proto := range protocols {
