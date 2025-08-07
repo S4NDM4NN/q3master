@@ -32,11 +32,17 @@
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 0.5rem;
-      margin-top: 0.5rem;
+      margin-top: 1rem;
     }
-    .info-label {
-      color: #999;
-      font-size: 0.8rem;
+    .info-grid div {
+      font-size: 0.95rem;
+      color: #eee;
+    }
+    .info-grid .info-label {
+      display: block;
+      font-size: 0.75rem;
+      color: #aaa;
+      margin-bottom: 0.2rem;
     }
     .player-grid {
       display: grid;
@@ -49,7 +55,7 @@
     }
     .address {
       font-size: 0.9rem;
-      color: #bbb;
+      color: #f58;
     }
     .header-line {
       display: flex;
@@ -61,6 +67,7 @@
       color: #eee;
     }
   </style>
+
 </head>
 <body>
   <h1>Active Servers</h1>
