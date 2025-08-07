@@ -78,6 +78,8 @@
     }
 
     function refreshTable() {
+      const openModalId = $(".modal.show").attr("id") || null;
+
       $.getJSON("/api/servers", function (data) {
         const tbody = $("#server-table").empty();
         const modalsContainer = $("#modals-container").empty();
@@ -124,8 +126,18 @@
             </div>
           `);
         });
+
+        // Re-show modal if one was open
+        if (openModalId) {
+          const modalEl = document.getElementById(openModalId);
+          if (modalEl) {
+            const modal = new bootstrap.Modal(modalEl);
+            modal.show();
+          }
+        }
       });
     }
+
 
     setInterval(refreshTable, 10000);
     refreshTable();
