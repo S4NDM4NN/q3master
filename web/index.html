@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Quake 3 Master Server</title>
+  <title>RTCW Master Server</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -67,21 +67,77 @@
       font-weight: bold;
       color: #eee;
     }
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
+    .online-dot {
+      background-color: #4caf50;
+    }
+    .offline-dot {
+      background-color: #f44336;
+    }
+    .server-status {
+      font-size: 0.85rem;
+      color: #ccc;
+    }
   </style>
-
 </head>
 <body>
-  <h1>Active Servers</h1>
+  <h1>
+    RTCW Master Server Viewer<br>
+    <span id="server-counts" class="fs-5 text-light-emphasis"></span>
+  </h1>
+
   <div class="mb-4">
     <input type="text" id="server-filter" class="form-control bg-dark text-light border-secondary" placeholder="Filter servers...">
   </div>
+
+  <div class="form-check mb-4">
+    <input class="form-check-input" type="checkbox" value="" id="showOfflineToggle">
+    <label class="form-check-label text-light" for="showOfflineToggle">
+      Show Offline Servers
+    </label>
+  </div>
+  <div class="btn-group mb-4" role="group" id="protocol-filter">
+    <input type="radio" class="btn-check" name="protocol" id="filter-all" value="all" autocomplete="off" checked>
+    <label class="btn btn-outline-light" for="filter-all">All</label>
+
+    <input type="radio" class="btn-check" name="protocol" id="filter-57" value="57" autocomplete="off">
+    <label class="btn btn-outline-light" for="filter-57">RTCW 1.0</label>
+
+    <input type="radio" class="btn-check" name="protocol" id="filter-60" value="60" autocomplete="off">
+    <label class="btn btn-outline-light" for="filter-60">RTCW 1.4</label>
+
+    <input type="radio" class="btn-check" name="protocol" id="filter-84" value="84" autocomplete="off">
+    <label class="btn btn-outline-light" for="filter-84">ET 2.60b</label>
+  </div>
+
+
   <div id="server-container"></div>
 
   <script>
     const colorMap = {
-      '0': 'white', '1': 'red', '2': 'green', '3': 'yellow',
-      '4': 'blue', '5': 'cyan', '6': 'pink', '7': 'white',
-      '8': 'gray', '9': 'black'
+      '0': '#FFFFFF', '1': '#FF0000', '2': '#00FF00', '3': '#FFFF00',
+      '4': '#0000FF', '5': '#00FFFF', '6': '#FF00FF', '7': '#FFFFFF',
+      '8': '#808080', '9': '#000000',
+      'a': '#FF7F00', 'b': '#7FFF00', 'c': '#007FFF', 'd': '#7F00FF',
+      'e': '#FF007F', 'f': '#00FF7F', 'g': '#FFAA00', 'h': '#AAFF00',
+      'i': '#00AAFF', 'j': '#AA00FF', 'k': '#FF00AA', 'l': '#00FFAA',
+      'm': '#DDDDDD', 'n': '#AAAAAA', 'o': '#777777', 'p': '#444444',
+      'q': '#222222', 'r': '#FFAACC', 's': '#AAFFCC', 't': '#CCAAFF',
+      'u': '#FFCCAA', 'v': '#CCFFAA', 'w': '#AACCAA', 'x': '#AACCFF',
+      'y': '#CCAACC', 'z': '#AACCBB',
+      'A': '#FF7F00', 'B': '#7FFF00', 'C': '#007FFF', 'D': '#7F00FF',
+      'E': '#FF007F', 'F': '#00FF7F', 'G': '#FFAA00', 'H': '#AAFF00',
+      'I': '#00AAFF', 'J': '#AA00FF', 'K': '#FF00AA', 'L': '#00FFAA',
+      'M': '#DDDDDD', 'N': '#AAAAAA', 'O': '#777777', 'P': '#444444',
+      'Q': '#222222', 'R': '#FFAACC', 'S': '#AAFFCC', 'T': '#CCAAFF',
+      'U': '#FFCCAA', 'V': '#CCFFAA', 'W': '#AACCAA', 'X': '#AACCFF',
+      'Y': '#CCAACC', 'Z': '#AACCBB'
     };
 
     function parseNameColors(name) {
@@ -90,7 +146,7 @@
       for (let i = 0; i < name.length; i++) {
         if (name[i] === '^' && i + 1 < name.length) {
           const code = name[i + 1];
-          if (colorMap[code]) {
+          if (colorMap.hasOwnProperty(code)) {
             color = colorMap[code];
             i++;
             continue;
@@ -101,48 +157,88 @@
       return result;
     }
 
+    function getProtocolLabel(protocol) {
+      switch (protocol) {
+        case 57: return "RTCW 1.0";
+        case 60: return "RTCW 1.4";
+        case 84: return "ET 2.60b";
+        default: return "Unknown";
+      }
+    }
+
+    function formatLastSeen(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
     function refreshServers() {
       if ($(".collapse.show").length > 0) return;
 
       $.getJSON("/api/servers", function (data) {
         const container = $("#server-container").empty();
+        const showOffline = $("#showOfflineToggle").is(":checked");
+        const selectedProtocol = $("input[name='protocol']:checked").val();
 
-        data.forEach((server, index) => {
+        let onlineCount = 0;
+        let offlineCount = 0;
+
+        data.forEach(s => s.online ? onlineCount++ : offlineCount++);
+
+        $("#server-counts").html(`🟢 ${onlineCount} / 🔴 ${offlineCount}`);
+
+          data.filter(s => showOffline || s.online).filter(s => selectedProtocol === "all" || String(s.protocol) === selectedProtocol).forEach((server, index) => {
           const players = (server.players || []).map(p => `<div class="q3name">${parseNameColors(p)}</div>`).join('');
-          const hostname = parseNameColors(server.hostname);
+          const hostname = parseNameColors(server.hostname || "Unnamed Server");
           const collapseId = `collapse-${index}`;
+          const statusDot = server.online ? "online-dot" : "offline-dot";
+          const statusLabel = server.online ? "Online" : "Offline";
 
           container.append(`
             <div class="server-card"
-                data-hostname="${server.hostname.toLowerCase()}"
+                data-hostname="${(server.hostname || '').toLowerCase()}"
                 data-map="${(server.map || '').toLowerCase()}"
                 data-mod="${(server.mod || '').toLowerCase()}"
                 data-gametype="${(server.gametype || '').toLowerCase()}"
-                data-address="${(server.address || '').toLowerCase()}">
-              <div class="card">
+                data-address="${(server.address || '').toLowerCase()}"
+                data-version="${(server.version || '').toLowerCase()}">
+              <div class="card card-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" role="button">
                 <div class="card-header">
-                  <div class="header-line">
+                  <div class="d-flex justify-content-between align-items-start">
                     <div>
-                      <div class="q3name fs-5">${hostname}</div>
+                      <div class="q3name fs-5">
+                        <span class="badge bg-secondary me-2">${getProtocolLabel(server.protocol)}</span>
+                        ${hostname}
+                      </div>
                       <div class="address"><code>${server.address}</code></div>
+                      <div class="d-flex gap-4 mt-2">
+                        <div><span class="text-light-emphasis">Mod:</span> <span class="text-info">${server.mod || 'unknown'}</span></div>
+                        <div><span class="text-light-emphasis">Map:</span> <span class="text-warning">${server.map || 'unknown'}</span></div>
+                      </div>
                     </div>
-                    <div class="player-count">${server.player_count}/${server.max_players} players</div>
+                    <div class="text-end mt-1">
+                      <div class="server-status mb-1">
+                        <span class="status-dot ${statusDot}"></span>${statusLabel}
+                      </div>
+                      <div class="player-count">${server.player_count}/${server.max_players} players</div>
+                      <div class="text-end" style="font-size: 0.85rem; color: ${server.online ? '#ccc' : '#f0ad4e'};">
+                        Last seen: ${formatLastSeen(server.last_seen)}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div class="card-body">
+                <div id="${collapseId}" class="collapse card-body">
                   <div class="info-grid">
-                    <div><span class="info-label">Map</span>${server.map || '<em>unknown</em>'}</div>
-                    <div><span class="info-label">Mod</span>${server.mod || '<em>unknown</em>'}</div>
                     <div><span class="info-label">Gametype</span>${server.gametype || '<em>unknown</em>'}</div>
                     <div><span class="info-label">Version</span>${server.version || '<em>unknown</em>'}</div>
                   </div>
-                  <button class="btn btn-sm btn-outline-light mt-3" data-bs-toggle="collapse" data-bs-target="#${collapseId}">
-                    Show Players
-                  </button>
-                  <div id="${collapseId}" class="collapse">
-                    <div class="player-grid">
-                      ${players || '<em>No players online</em>'}
-                    </div>
+                  <h6 class="mt-3">Players:</h6>
+                  <div class="player-grid">
+                    ${players || '<em>No players online</em>'}
                   </div>
                 </div>
               </div>
@@ -150,9 +246,9 @@
           `);
         });
       });
+
       $('#server-filter').off('input').on('input', function () {
         const query = $(this).val().toLowerCase();
-
         $('.server-card').each(function () {
           const $card = $(this);
           const matches =
@@ -162,16 +258,16 @@
             String($card.data('gametype') || '').includes(query) ||
             String($card.data('address') || '').includes(query) ||
             String($card.data('version') || '').includes(query);
-
           $card.toggle(matches);
         });
       });
-    }
 
+      $('#showOfflineToggle').off('change').on('change', refreshServers);
+      $('#protocol-filter input').off('change').on('change', refreshServers);
+    }
 
     setInterval(refreshServers, 10000);
     refreshServers();
   </script>
 </body>
 </html>
-
