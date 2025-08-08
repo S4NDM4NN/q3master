@@ -197,9 +197,7 @@ func pollServer(s *ServerEntry) {
 
 	keyValues := strings.Split(strings.TrimPrefix(lines[1], "\\"), "\\")
 	newStatus := &ServerEntry{
-		Address:  s.Address,
 		LastSeen: time.Now(),
-		Online:   true,
 	}
 
 	for i := 0; i < len(keyValues)-1; i += 2 {
