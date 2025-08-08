@@ -14,6 +14,5 @@ RUN go build -o q3master .
 
 # Expose HTTP and UDP ports
 EXPOSE 8080
-EXPOSE 27950/udp
 
-CMD ["./q3master"]
+CMD ["./q3master"]S
