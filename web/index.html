@@ -214,7 +214,9 @@
         $("#server-counts").html(`🟢 ${onlineCount} / 🔴 ${offlineCount}`);
 
           data.filter(s => showOffline || s.online).filter(s => selectedProtocol === "all" || String(s.protocol) === selectedProtocol).forEach((server, index) => {
-          const players = (server.players || []).map(p => `<div class="q3name">${parseNameColors(p)}</div>`).join('');
+          const realPlayers = (server.players || []).map(p => `<div class="q3name">${parseNameColors(p)}</div>`).join('');
+          const botPlayers = (server.bots || []).map(p => `<div class="q3name"><i class="bi bi-robot me-1"></i>${parseNameColors(p)}</div>`).join('');
+          const hasBots = server.bots && server.bots.length > 0;
           const hostname = parseNameColors(server.hostname || "Unnamed Server");
           const collapseId = `collapse-${index}`;
           const statusDot = server.online ? "online-dot" : "offline-dot";
@@ -249,7 +251,10 @@
                 <div class="server-status mb-1">
                 <span class="status-dot ${statusDot}"></span>${statusLabel}
                 </div>
-                <div class="player-count">${server.player_count}/${server.max_players} players</div>
+                <div class="player-count">
+                  ${server.player_count}/${server.max_players} players
+                  ${hasBots ? ` <i class="bi bi-robot" title="Bots online"></i> ${server.bot_count}` : ''}
+                </div>
                 <div class="text-end" style="font-size: 0.85rem; color: ${server.online ? '#ccc' : '#f0ad4e'};">
                 Last seen: ${formatLastSeen(server.last_seen)}
                 </div>
@@ -263,10 +268,15 @@
                 <div><span class="info-label">Gametype</span>${server.gametype || '<em>unknown</em>'}</div>
                 <div><span class="info-label">Version</span>${server.version || '<em>unknown</em>'}</div>
                 </div>
-                <h6 class="mt-3">Players:</h6>
+                <h6 class="mt-3 text-light-emphasis fw-bold"">Players:</h6>
                 <div class="player-grid">
-                ${players || '<em>No players online</em>'}
+                  ${realPlayers || '<em>No players online</em>'}
                 </div>
+                ${hasBots ? `
+                <h6 class="mt-3 text-light-emphasis fw-bold"">Bots:</h6>
+                <div class="player-grid">
+                  ${botPlayers}
+                </div>` : ''}
             </div>
             </div>
         </div>

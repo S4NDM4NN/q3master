@@ -29,12 +29,14 @@ type ServerEntry struct {
 	LastSeen    time.Time `json:"last_seen"`
 	Online      bool      `json:"online"`
 	Protocol    int       `json:"protocol"`
+	Bots        []string  `json:"bots"`
+	BotCount    int       `json:"bot_count"`
 }
 
 var (
 	serverList  = make(map[string]*ServerEntry)
 	serverMutex sync.Mutex
-	protocols   = []string{"57","60", "84"}
+	protocols   = []string{"57", "60", "84"}
 	masterHost  = "wolfmaster.idsoftware.com:27950"
 )
 
@@ -77,7 +79,6 @@ func withCORS(next http.HandlerFunc) http.HandlerFunc {
 		next(w, r)
 	}
 }
-
 
 func refreshFromMaster() {
 	for _, proto := range protocols {
@@ -157,7 +158,6 @@ func pollServers() {
 	}
 }
 
-
 func pollServer(s *ServerEntry) {
 	serverMutex.Lock()
 	s.Polls++
@@ -223,16 +223,31 @@ func pollServer(s *ServerEntry) {
 	}
 
 	newStatus.Players = []string{}
+	newStatus.Bots = []string{}
+
 	for _, line := range lines[2:] {
+
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "\"", 3)
-		if len(parts) >= 2 {
-			newStatus.Players = append(newStatus.Players, parts[1])
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		ping := fields[1]
+		name := ""
+		if parts := strings.SplitN(line, "\"", 3); len(parts) >= 2 {
+			name = parts[1]
+		}
+
+		if ping == "0" {
+			newStatus.Bots = append(newStatus.Bots, name)
+		} else {
+			newStatus.Players = append(newStatus.Players, name)
 		}
 	}
 	newStatus.PlayerCount = len(newStatus.Players)
+	newStatus.BotCount = len(newStatus.Bots)
 
 	serverMutex.Lock()
 	s.Hostname = newStatus.Hostname
@@ -246,6 +261,8 @@ func pollServer(s *ServerEntry) {
 	s.PlayerCount = newStatus.PlayerCount
 	s.LastSeen = newStatus.LastSeen
 	s.Online = true
+	s.Bots = newStatus.Bots
+	s.BotCount = newStatus.BotCount
 	serverMutex.Unlock()
 }
 
