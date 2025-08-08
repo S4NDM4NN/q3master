@@ -205,6 +205,7 @@
         const container = $("#server-container").empty();
         const showOffline = $("#showOfflineToggle").is(":checked");
         const selectedProtocol = $("input[name='protocol']:checked").val();
+        const filterQuery = $('#server-filter').val().toLowerCase();
 
         let onlineCount = 0;
         let offlineCount = 0;
@@ -213,7 +214,20 @@
 
         $("#server-counts").html(`🟢 ${onlineCount} / 🔴 ${offlineCount}`);
 
-          data.filter(s => showOffline || s.online).filter(s => selectedProtocol === "all" || String(s.protocol) === selectedProtocol).forEach((server, index) => {
+        data.filter(s => showOffline || s.online)
+        .filter(s => selectedProtocol === "all" || String(s.protocol) === selectedProtocol)
+        .filter(s => {
+          const query = filterQuery;
+          return (
+            (s.hostname || '').toLowerCase().includes(query) ||
+            (s.map || '').toLowerCase().includes(query) ||
+            (s.mod || '').toLowerCase().includes(query) ||
+            (s.gametype || '').toLowerCase().includes(query) ||
+            (s.address || '').toLowerCase().includes(query) ||
+            (s.version || '').toLowerCase().includes(query)
+          );
+        })
+  .forEach((server, index) => {
           const realPlayers = (server.players || []).map(p => `<div class="q3name">${parseNameColors(p)}</div>`).join('');
           const botPlayers = (server.bots || []).map(p => `<div class="q3name"><i class="bi bi-robot me-1"></i>${parseNameColors(p)}</div>`).join('');
           const hasBots = server.bots && server.bots.length > 0;
@@ -284,23 +298,9 @@
         });
       });
 
-      $('#server-filter').off('input').on('input', function () {
-        const query = $(this).val().toLowerCase();
-        $('.server-card').each(function () {
-          const $card = $(this);
-          const matches =
-            String($card.data('hostname') || '').includes(query) ||
-            String($card.data('map') || '').includes(query) ||
-            String($card.data('mod') || '').includes(query) ||
-            String($card.data('gametype') || '').includes(query) ||
-            String($card.data('address') || '').includes(query) ||
-            String($card.data('version') || '').includes(query);
-          $card.toggle(matches);
-        });
-      });
-
       $('#showOfflineToggle').off('change').on('change', refreshServers);
       $('#protocol-filter input').off('change').on('change', refreshServers);
+      $('#server-filter').trigger('input');
     }
 
     $(document).off('click', '.clipboard-icon').on('click', '.clipboard-icon', function (e) {
@@ -316,6 +316,22 @@
         icon.removeClass('bi-clipboard-check').addClass('bi-clipboard');
         }, 1000);
     });
+    
+    });
+
+    $('#server-filter').on('input', function () {
+      const query = $(this).val().toLowerCase();
+      $('.server-card').each(function () {
+        const $card = $(this);
+        const matches =
+          String($card.data('hostname') || '').includes(query) ||
+          String($card.data('map') || '').includes(query) ||
+          String($card.data('mod') || '').includes(query) ||
+          String($card.data('gametype') || '').includes(query) ||
+          String($card.data('address') || '').includes(query) ||
+          String($card.data('version') || '').includes(query);
+        $card.toggle(matches);
+      });
     });
 
     setInterval(refreshServers, 10000);
