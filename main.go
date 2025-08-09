@@ -344,7 +344,7 @@ func startJanitor() {
 
 			serverMutex.Lock()
 			for addr, s := range serverList {
-				// Keep Online bool in sync with State (optional, but tidy)
+				// Keep Online bool in sync with State
 				s.Online = (s.State == StateOnline)
 
 				switch s.State {
@@ -360,7 +360,6 @@ func startJanitor() {
 					}
 				case StateOnline:
 					// no eviction; they remain as long as they keep polling
-					// (optional safety: if we haven't seen it in a long while, demote)
 					if !s.LastSeen.IsZero() && now.Sub(s.LastSeen) > 5*time.Minute {
 						// If it hasn't reported in a bit, let polling logic flip it,
 						// but we can preemptively show it as offline-ish:
