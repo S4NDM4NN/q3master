@@ -63,6 +63,10 @@
   <div id="server-container"></div>
 
   <script>
+    function debounce(fn, wait=150){
+      let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), wait); };
+    }
+
     // Q3/ET color parsing
     const colorMap = {
       '0':'#FFFFFF','1':'#FF0000','2':'#00FF00','3':'#FFFF00',
@@ -107,39 +111,38 @@
       return isNaN(d) || d.getFullYear() < 2000;
     }
 
-    function refreshServers(){
-      if ($(".collapse.show").length > 0) return;
+    const refreshServers = (function(){
+      let lastData = []; // cache last payload to avoid flicker when just filtering
 
-      $.getJSON("/api/servers", function(data){
+      function render(data){
         const container = $("#server-container").empty();
+
         const showOffline = $("#showOfflineToggle").is(":checked");
         const selectedProtocol = $("input[name='protocol']:checked").val();
         const q = ($('#server-filter').val()||'').toLowerCase();
 
-        // Filter out NEW first so they never show
+        // Never show "new"
         let items = data.filter(s => !isNewServer(s));
 
-        // Counts (ignore NEW completely)
+        // Apply protocol + offline + search filters
+        items = items
+          .filter(s => selectedProtocol === "all" || String(s.protocol) === selectedProtocol)
+          .filter(s => showOffline || s.online === true)
+          .filter(s =>
+            (s.hostname||'').toLowerCase().includes(q) ||
+            (s.map||'').toLowerCase().includes(q) ||
+            (s.mod||'').toLowerCase().includes(q) ||
+            (s.gametype||'').toLowerCase().includes(q) ||
+            (s.address||'').toLowerCase().includes(q) ||
+            (s.version||'').toLowerCase().includes(q)
+          );
+
+        // Counts reflect the currently visible list
         const onlineCount  = items.filter(s => s.online === true).length;
         const offlineCount = items.filter(s => s.online === false).length;
         $("#server-counts").text(`🟢 ${onlineCount} / 🔴 ${offlineCount}`);
 
-        // Protocol + offline toggle + search
-        items = items
-          .filter(s => selectedProtocol === "all" || String(s.protocol) === selectedProtocol)
-          .filter(s => showOffline || s.online === true)
-          .filter(s => {
-            return (
-              (s.hostname||'').toLowerCase().includes(q) ||
-              (s.map||'').toLowerCase().includes(q) ||
-              (s.mod||'').toLowerCase().includes(q) ||
-              (s.gametype||'').toLowerCase().includes(q) ||
-              (s.address||'').toLowerCase().includes(q) ||
-              (s.version||'').toLowerCase().includes(q)
-            );
-          });
-
-        // Sort: online first, then players desc, then address
+        // Sort + render as before
         items.sort((a,b)=>{
           if (a.online !== b.online) return a.online ? -1 : 1;
           if ((b.player_count|0)!==(a.player_count|0)) return (b.player_count|0)-(a.player_count|0);
@@ -157,12 +160,12 @@
 
           container.append(`
             <div class="server-card"
-                 data-hostname="${(server.hostname||'').toLowerCase()}"
-                 data-map="${(server.map||'').toLowerCase()}"
-                 data-mod="${(server.mod||'').toLowerCase()}"
-                 data-gametype="${(server.gametype||'').toLowerCase()}"
-                 data-address="${(server.address||'').toLowerCase()}"
-                 data-version="${(server.version||'').toLowerCase()}">
+                data-hostname="${(server.hostname||'').toLowerCase()}"
+                data-map="${(server.map||'').toLowerCase()}"
+                data-mod="${(server.mod||'').toLowerCase()}"
+                data-gametype="${(server.gametype||'').toLowerCase()}"
+                data-address="${(server.address||'').toLowerCase()}"
+                data-version="${(server.version||'').toLowerCase()}">
               <div class="card">
                 <div class="card-header d-flex align-items-start justify-content-between">
                   <div class="flex-grow-1">
@@ -214,14 +217,22 @@
             </div>
           `);
         });
-      });
+      }
 
-      // re-bind
-      $('#showOfflineToggle').off('change').on('change', refreshServers);
-      $('#protocol-filter input').off('change').on('change', refreshServers);
-      $('#server-filter').trigger('input');
-    }
+      // Returned function decides whether to fetch or reuse last data
+      return function refresh(shouldFetch=true){
+        if ($(".collapse.show").length > 0) return;
 
+        if (shouldFetch) {
+          $.getJSON("/api/servers", function(data){
+            lastData = data || [];
+            render(lastData);
+          });
+        } else {
+          render(lastData);
+        }
+      };
+    })();
     // Clipboard
     $(document).off('click','.clipboard-icon').on('click','.clipboard-icon',function(e){
       e.preventDefault(); e.stopPropagation();
@@ -247,6 +258,16 @@
         $c.toggle(m);
       });
     });
+
+    const refreshNow = () => refreshServers(false);
+    const refreshDebounced = debounce(() => refreshServers(false), 150);
+
+    // protocol + showOffline: instant re-render
+    $('#protocol-filter input').off('change').on('change', refreshNow);
+    $('#showOfflineToggle').off('change').on('change', refreshNow);
+
+    // search box: debounced re-render
+    $('#server-filter').off('input').on('input', refreshDebounced);
 
     setInterval(refreshServers, 10000);
     refreshServers();
