@@ -14,23 +14,36 @@ import (
 	"time"
 )
 
+type ServerState string
+
+const (
+	StateNew     ServerState = "new"     // discovered from master; never had a good poll
+	StateOnline  ServerState = "online"  // at least one successful poll and currently reachable
+	StateOffline ServerState = "offline" // had a good poll before, now failing
+)
+
 type ServerEntry struct {
-	Address     string    `json:"address"`
-	Hostname    string    `json:"hostname"`
-	Map         string    `json:"map"`
-	Mod         string    `json:"mod"`
-	GameType    string    `json:"gametype"`
-	Version     string    `json:"version"`
-	PB          string    `json:"pb"`
-	PlayerCount int       `json:"player_count"`
-	MaxPlayers  int       `json:"max_players"`
-	Players     []string  `json:"players"`
-	Polls       int       `json:"polls"`
-	LastSeen    time.Time `json:"last_seen"`
-	Online      bool      `json:"online"`
-	Protocol    int       `json:"protocol"`
-	Bots        []string  `json:"bots"`
-	BotCount    int       `json:"bot_count"`
+	Address      string      `json:"address"`
+	Hostname     string      `json:"hostname"`
+	Map          string      `json:"map"`
+	Mod          string      `json:"mod"`
+	GameType     string      `json:"gametype"`
+	Version      string      `json:"version"`
+	PB           string      `json:"pb"`
+	PlayerCount  int         `json:"player_count"`
+	MaxPlayers   int         `json:"max_players"`
+	Players      []string    `json:"players"`
+	Polls        int         `json:"polls"`
+	LastSeen     time.Time   `json:"last_seen"`
+	Online       bool        `json:"online"`
+	Protocol     int         `json:"protocol"`
+	Bots         []string    `json:"bots"`
+	BotCount     int         `json:"bot_count"`
+	State        ServerState `json:"state"`
+	FirstSeen    time.Time   `json:"first_seen"`
+	LastAttempt  time.Time   `json:"last_attempt"`
+	LastGoodPoll time.Time   `json:"last_good_poll"`
+	MissedPolls  int         `json:"missed_polls"`
 }
 
 var (
@@ -54,6 +67,8 @@ func main() {
 			time.Sleep(15 * time.Second)
 		}
 	}()
+
+	startJanitor()
 
 	http.HandleFunc("/api/servers", withCORS(serveAPI))
 	http.Handle("/", http.FileServer(http.Dir("web")))
@@ -130,8 +145,11 @@ func refreshFromMaster() {
 				serverMutex.Lock()
 				if _, exists := serverList[addr]; !exists {
 					serverList[addr] = &ServerEntry{
-						Address:  addr,
-						Protocol: parseInt(proto),
+						Address:     addr,
+						Protocol:    parseInt(proto),
+						State:       StateNew,
+						FirstSeen:   time.Now(),
+						LastAttempt: time.Time{},
 					}
 					go pollServer(serverList[addr])
 				}
@@ -161,6 +179,7 @@ func pollServers() {
 func pollServer(s *ServerEntry) {
 	serverMutex.Lock()
 	s.Polls++
+	s.LastAttempt = time.Now()
 	serverMutex.Unlock()
 
 	addr, err := net.ResolveUDPAddr("udp", s.Address)
@@ -261,13 +280,25 @@ func pollServer(s *ServerEntry) {
 	s.Online = true
 	s.Bots = newStatus.Bots
 	s.BotCount = newStatus.BotCount
+	s.LastGoodPoll = time.Now()
+	s.MissedPolls = 0
+	s.State = StateOnline
 	serverMutex.Unlock()
 }
 
 func markOffline(s *ServerEntry) {
 	serverMutex.Lock()
+	defer serverMutex.Unlock()
+
 	s.Online = false
-	serverMutex.Unlock()
+	// Only count a miss if we actually attempted something recently
+	s.MissedPolls++
+	// If we've ever had a good poll, it's "offline"; otherwise it stays "new"
+	if !s.LastGoodPoll.IsZero() {
+		s.State = StateOffline
+	} else {
+		s.State = StateNew
+	}
 }
 
 func parseInt(s string) int {
@@ -303,4 +334,42 @@ func serveAPI(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(list)
+}
+
+func startJanitor() {
+	ticker := time.NewTicker(1 * time.Minute)
+	go func() {
+		for range ticker.C {
+			now := time.Now()
+
+			serverMutex.Lock()
+			for addr, s := range serverList {
+				// Keep Online bool in sync with State (optional, but tidy)
+				s.Online = (s.State == StateOnline)
+
+				switch s.State {
+				case StateNew:
+					// New servers fall off after 10 missed polls
+					if s.MissedPolls >= 10 {
+						delete(serverList, addr)
+					}
+				case StateOffline:
+					// Offline servers fall off after 7 days since last good poll
+					if !s.LastGoodPoll.IsZero() && now.Sub(s.LastGoodPoll) >= 7*24*time.Hour {
+						delete(serverList, addr)
+					}
+				case StateOnline:
+					// no eviction; they remain as long as they keep polling
+					// (optional safety: if we haven't seen it in a long while, demote)
+					if !s.LastSeen.IsZero() && now.Sub(s.LastSeen) > 5*time.Minute {
+						// If it hasn't reported in a bit, let polling logic flip it,
+						// but we can preemptively show it as offline-ish:
+						s.State = StateOffline
+						s.Online = false
+					}
+				}
+			}
+			serverMutex.Unlock()
+		}
+	}()
 }
