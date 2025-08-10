@@ -10,7 +10,7 @@ RUN go mod download
 COPY . .
 
 # Build the entire project
-RUN go build -o q3master .
+RUN go build -o q3master ./cmd/q3master
 
 # Expose HTTP and UDP ports
 EXPOSE 8080

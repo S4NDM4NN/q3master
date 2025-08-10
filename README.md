@@ -29,7 +29,7 @@ Live Demo: [click here](https://list.s4ndmod.com/)
 ```bash
 git clone https://github.com/youruser/q3master.git
 cd q3master
-go build -o q3master .
+go build -o q3master ./cmd/q3master
 ./q3master
 ```
 
@@ -88,9 +88,22 @@ The frontend is served at `/`. It includes:
 
 ```
 q3master/
-├── main.go             # Go server and poller logic
-├── go.mod / go.sum     # Dependencies
-├── Dockerfile          # Build/run container image
-└── web/
-    └── index.html      # HTML, CSS, JS (Bootstrap 5, jQuery)
+├── cmd/
+│   └── q3master/
+│       └── main.go           # Application entrypoint (HTTP server wiring)
+├── internal/
+│   ├── servers/              # Discovery, polling, janitor, types, store
+│   │   ├── master.go
+│   │   ├── poller.go
+│   │   ├── janitor.go
+│   │   ├── types.go
+│   │   ├── list.go
+│   │   └── util.go
+│   └── httpapi/              # HTTP handlers and middleware
+│       ├── handlers.go
+│       └── middleware.go
+├── web/
+│   └── index.html            # HTML, CSS, JS (Bootstrap 5, jQuery)
+├── go.mod / go.sum           # Dependencies
+└── Dockerfile                # Build/run container image
 ```
