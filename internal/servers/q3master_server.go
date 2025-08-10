@@ -6,6 +6,7 @@ import (
     "net"
     "strconv"
     "strings"
+    "sync"
     "time"
 )
 
@@ -82,7 +83,8 @@ type bucket struct {
 }
 
 var (
-    rlMutex      = serverMutex // reuse
+    // dedicated rate-limit mutex; do not alias serverMutex
+    rlMutex      sync.Mutex
     ipBuckets    = make(map[string]*bucket)
     globalBucket = &bucket{tokens: 50, lastRefill: time.Now(), rate: 50, burst: 100}
 )
