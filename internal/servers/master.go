@@ -34,7 +34,8 @@ func refreshFromMaster() {
             }
 
             for {
-                conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+                // Allow more time for multi-packet responses from master
+                conn.SetReadDeadline(time.Now().Add(2 * time.Second))
                 buffer := make([]byte, 1400)
                 n, err := conn.Read(buffer)
                 if err != nil {
