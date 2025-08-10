@@ -15,6 +15,8 @@ func main() {
     servers.StartDiscovery(5 * time.Minute)
     servers.StartPolling(15 * time.Second)
     servers.StartJanitor()
+    // start UDP master server (getservers + heartbeat)
+    servers.StartMasterUDP(":27950")
 
     // HTTP endpoints
     http.HandleFunc("/api/servers", httpapi.WithCORS(httpapi.ServeServersAPI))
@@ -27,4 +29,3 @@ func main() {
     fmt.Println("Listening on :" + port)
     _ = http.ListenAndServe(":"+port, nil)
 }
-

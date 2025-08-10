@@ -93,6 +93,9 @@ func pollServer(s *ServerEntry) {
             newStatus.PB = v
         case "sv_maxclients":
             newStatus.MaxPlayers = parseInt(v)
+        case "protocol":
+            // capture protocol if server reports it
+            newStatus.Protocol = parseInt(v)
         }
     }
 
@@ -139,6 +142,9 @@ func pollServer(s *ServerEntry) {
     s.LastGoodPoll = time.Now()
     s.MissedPolls = 0
     s.State = StateOnline
+    if newStatus.Protocol != 0 {
+        s.Protocol = newStatus.Protocol
+    }
     serverMutex.Unlock()
 }
 
@@ -154,4 +160,3 @@ func markOffline(s *ServerEntry) {
         s.State = StateNew
     }
 }
-

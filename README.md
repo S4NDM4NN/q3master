@@ -9,6 +9,7 @@ Live Demo: [click here](https://list.s4ndmod.com/)
 ## Features
 
 **Master Server Polling** – Queries the official master server (`wolfmaster.idsoftware.com`) for active servers.
+**Built-in Master UDP** – Serves Quake 3 `getservers` and accepts `heartbeat` on UDP 27950.
 **Smart Poller** – Continuously polls servers for real-time status updates.
 **Web API** – Exposes a `/api/servers` endpoint for consuming live server data.
 **Bootstrap Frontend** – dark-themed interface with filtering, status indicators, player lists, and colorized nicknames.
@@ -71,6 +72,13 @@ Each object includes:
 
 ---
 
+## Master UDP
+
+- Listens on UDP `:27950` and responds to `getservers <protocol> ...` with `getserversResponse` containing known servers (merged from official master and heartbeats).
+- Accepts `heartbeat` from game servers (adds/refreshes entry) and `shutdown` (removes entry). Heartbeat-sourced servers are polled immediately to enrich info and determine protocol.
+
+---
+
 ## Web Viewer
 
 The frontend is served at `/`. It includes:
@@ -92,9 +100,10 @@ q3master/
 │   └── q3master/
 │       └── main.go           # Application entrypoint (HTTP server wiring)
 ├── internal/
-│   ├── servers/              # Discovery, polling, janitor, types, store
+│   ├── servers/              # Master UDP, discovery, polling, janitor, types, store
 │   │   ├── master.go
-│   │   ├── poller.go
+│   │   ├── q3master_server.go
+│   │   ├── q3master_poller.go
 │   │   ├── janitor.go
 │   │   ├── types.go
 │   │   ├── list.go
