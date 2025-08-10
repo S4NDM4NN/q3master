@@ -1,0 +1,22 @@
+# Go local caches created by local builds
+.gocache/
+.gopath/
+
+# Go build/test artifacts
+*.test
+*.out
+
+# Binaries and shared objects
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Editors/OS
+.vscode/
+.idea/
+.DS_Store
+
+# Env files
+.env

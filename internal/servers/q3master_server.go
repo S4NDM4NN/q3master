@@ -25,6 +25,9 @@ func StartMasterUDP(addr string) {
             return
         }
         fmt.Printf("Master UDP listening on %s\n", conn.LocalAddr())
+        // Best-effort enlarge buffers to handle bursts
+        _ = conn.SetReadBuffer(1 << 20)
+        _ = conn.SetWriteBuffer(1 << 20)
 
         buf := make([]byte, 2048)
         for {
@@ -43,17 +46,91 @@ func StartMasterUDP(addr string) {
 
             switch {
             case strings.HasPrefix(lc, "getservers"):
-                handleGetServers(conn, raddr, line)
+                if allowRequest(raddr.IP.String(), kindGetServers) {
+                    handleGetServers(conn, raddr, line)
+                }
             case strings.HasPrefix(lc, "heartbeat"):
-                handleHeartbeat(raddr, line)
+                if allowRequest(raddr.IP.String(), kindHeartbeat) {
+                    handleHeartbeat(raddr, line)
+                }
             case strings.HasPrefix(lc, "shutdown"):
-                handleShutdown(raddr)
+                if allowRequest(raddr.IP.String(), kindShutdown) {
+                    handleShutdown(raddr)
+                }
             default:
                 // ignore
             }
         }
     }()
 }
+
+// --- Simple token-bucket rate limiting ---
+
+type reqKind int
+
+const (
+    kindGetServers reqKind = iota
+    kindHeartbeat
+    kindShutdown
+)
+
+type bucket struct {
+    tokens     float64
+    lastRefill time.Time
+    rate       float64 // tokens per second
+    burst      float64 // max tokens
+}
+
+var (
+    rlMutex      = serverMutex // reuse
+    ipBuckets    = make(map[string]*bucket)
+    globalBucket = &bucket{tokens: 50, lastRefill: time.Now(), rate: 50, burst: 100}
+)
+
+func cfgFor(kind reqKind) (rate, burst float64) {
+    switch kind {
+    case kindGetServers:
+        return 1.5, 4 // per-IP rate for getservers
+    case kindHeartbeat:
+        return 2, 4
+    case kindShutdown:
+        return 0.5, 1
+    default:
+        return 1, 2
+    }
+}
+
+func take(b *bucket, need float64) bool {
+    now := time.Now()
+    elapsed := now.Sub(b.lastRefill).Seconds()
+    b.tokens = minf(b.burst, b.tokens+elapsed*b.rate)
+    b.lastRefill = now
+    if b.tokens >= need {
+        b.tokens -= need
+        return true
+    }
+    return false
+}
+
+func allowRequest(ip string, kind reqKind) bool {
+    rlMutex.Lock()
+    defer rlMutex.Unlock()
+    if !take(globalBucket, 1) {
+        return false
+    }
+    b, ok := ipBuckets[ip]
+    if !ok {
+        r, br := cfgFor(kind)
+        b = &bucket{tokens: br, lastRefill: time.Now(), rate: r, burst: br}
+        ipBuckets[ip] = b
+    } else {
+        r, br := cfgFor(kind)
+        b.rate, b.burst = r, br
+    }
+    return take(b, 1)
+}
+
+func minf(a, b float64) float64 { if a < b { return a } ; return b }
 
 func handleHeartbeat(raddr *net.UDPAddr, line string) {
     addr := net.JoinHostPort(raddr.IP.String(), strconv.Itoa(raddr.Port))
@@ -68,7 +145,7 @@ func handleHeartbeat(raddr *net.UDPAddr, line string) {
             LastAttempt: time.Time{},
         }
         serverList[addr] = s
-        go pollServer(s)
+        EnqueuePoll(addr)
     }
     // Heartbeats suggest the server is alive; record and queue a poll soon
     s.MissedPolls = 0
@@ -80,7 +157,19 @@ func handleHeartbeat(raddr *net.UDPAddr, line string) {
 func handleShutdown(raddr *net.UDPAddr) {
     addr := net.JoinHostPort(raddr.IP.String(), strconv.Itoa(raddr.Port))
     serverMutex.Lock()
-    delete(serverList, addr)
+    s := serverList[addr]
+    if s != nil {
+        recent := false
+        if !s.LastHeartbeat.IsZero() && time.Since(s.LastHeartbeat) < 5*time.Minute {
+            recent = true
+        }
+        if !recent && !s.LastGoodPoll.IsZero() && time.Since(s.LastGoodPoll) < 5*time.Minute {
+            recent = true
+        }
+        if recent {
+            delete(serverList, addr)
+        }
+    }
     serverMutex.Unlock()
 }
 

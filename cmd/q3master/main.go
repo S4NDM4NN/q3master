@@ -12,6 +12,7 @@ import (
 
 func main() {
     // background workers
+    servers.StartPollWorkers(8)
     servers.StartDiscovery(5 * time.Minute)
     servers.StartPolling(15 * time.Second)
     servers.StartJanitor()

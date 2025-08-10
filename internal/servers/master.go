@@ -74,7 +74,8 @@ func refreshFromMaster() {
                             FirstSeen:   time.Now(),
                             LastAttempt: time.Time{},
                         }
-                        go pollServer(serverList[addr])
+                        // Queue a poll instead of spawning unbounded goroutines
+                        EnqueuePoll(addr)
                     }
                     serverMutex.Unlock()
                 }
@@ -82,4 +83,3 @@ func refreshFromMaster() {
         }()
     }
 }
-

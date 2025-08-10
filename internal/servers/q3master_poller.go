@@ -6,6 +6,51 @@ import (
     "time"
 )
 
+// --- Poll worker queue with de-duplication ---
+
+var (
+    pollQueue      chan string
+    pendingPoll    = make(map[string]bool)
+    pollQueueMutex = serverMutex // reuse the existing mutex for simplicity
+)
+
+// StartPollWorkers spins up N workers to process poll requests.
+func StartPollWorkers(n int) {
+    if n <= 0 {
+        n = 4
+    }
+    pollQueue = make(chan string, 1024)
+    for i := 0; i < n; i++ {
+        go func() {
+            for addr := range pollQueue {
+                // clear pending mark
+                pollQueueMutex.Lock()
+                delete(pendingPoll, addr)
+                s := serverList[addr]
+                pollQueueMutex.Unlock()
+                if s != nil {
+                    pollServer(s)
+                }
+            }
+        }()
+    }
+}
+
+// EnqueuePoll schedules a server for polling if not already pending.
+func EnqueuePoll(addr string) {
+    pollQueueMutex.Lock()
+    if !pendingPoll[addr] {
+        pendingPoll[addr] = true
+        // non-blocking enqueue if channel is full; drop silently
+        select {
+        case pollQueue <- addr:
+        default:
+            // queue full; allow pending flag to remain so we try later
+        }
+    }
+    pollQueueMutex.Unlock()
+}
+
 // StartPolling periodically polls servers for status.
 func StartPolling(interval time.Duration) {
     go func() {
@@ -29,7 +74,7 @@ func pollServers() {
     serverMutex.Unlock()
 
     for _, s := range toPoll {
-        go pollServer(s)
+        EnqueuePoll(s.Address)
     }
 }
 
