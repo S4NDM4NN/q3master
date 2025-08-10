@@ -37,6 +37,9 @@ type ServerEntry struct {
     LastAttempt  time.Time   `json:"last_attempt"`
     LastGoodPoll time.Time   `json:"last_good_poll"`
     MissedPolls  int         `json:"missed_polls"`
+    // Heartbeat observability
+    LastHeartbeat time.Time `json:"last_heartbeat"`
+    Heartbeats    int       `json:"heartbeat_count"`
 }
 
 // in-memory store and configuration
@@ -47,4 +50,3 @@ var (
     protocols  = []string{"57", "60", "84"}
     masterHost = "wolfmaster.idsoftware.com:27950"
 )
-

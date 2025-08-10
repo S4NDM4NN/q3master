@@ -70,8 +70,10 @@ func handleHeartbeat(raddr *net.UDPAddr, line string) {
         serverList[addr] = s
         go pollServer(s)
     }
-    // Heartbeats suggest the server is alive; queue a poll soon
+    // Heartbeats suggest the server is alive; record and queue a poll soon
     s.MissedPolls = 0
+    s.LastHeartbeat = time.Now()
+    s.Heartbeats++
     serverMutex.Unlock()
 }
 

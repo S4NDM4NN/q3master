@@ -26,6 +26,7 @@
   .online-dot { background:#4caf50; }
   .offline-dot { background:#f44336; }
   .server-status { font-size:.85rem;color:#ccc; }
+  .heartbeat-icon { color:#0dcaf0; }
   .clipboard-icon { cursor:pointer;font-size:1rem;color:#ccc;transition:color .2s; }
   .clipboard-icon:hover { color:#fff; }
   .info-toggle { cursor:pointer;color:#66d9ef;font-size:1.2rem;transition:color .2s ease; }
@@ -127,6 +128,14 @@
       return isNaN(d) || d.getFullYear() < 2000;
     }
 
+    // Consider a server heartbeating if we saw a heartbeat recently
+    function isHeartbeating(s, windowMs = 60*60*1000){
+      if (!s || !s.last_heartbeat) return false;
+      const d = new Date(s.last_heartbeat);
+      if (isNaN(d)) return false;
+      return Date.now() - d.getTime() <= windowMs;
+    }
+
     const refreshServers = (function(){
       let lastData = []; // cache last payload to avoid flicker when just filtering
 
@@ -173,6 +182,7 @@
           const collapseId = `c-${idx}`;
           const dot = server.online ? 'online-dot':'offline-dot';
           const label = server.online ? 'Online':'Offline';
+          const hb = isHeartbeating(server);
 
           container.append(`
             <div class="server-card"
@@ -202,6 +212,7 @@
                   <div class="text-end ms-3" style="min-width: 160px;">
                     <div class="server-status mb-1">
                       <span class="status-dot ${dot}"></span>${label}
+                      ${hb ? '<i class="bi bi-broadcast heartbeat-icon ms-1" title="Direct heartbeat seen recently"></i>' : ''}
                     </div>
                     <div class="player-count">
                       ${(server.player_count??0)}/${server.max_players??0} players
