@@ -1,18 +1,30 @@
 # Quake 3 Engine Server Browser
 
-A standalone Go-based real-time server browser for Quake III Arena engine. This tool discovers, polls, and displays active game servers for Return to Castle Wolfenstein (RTCW), and Enemy Territory (ET) via a Bootstrap-powered frontend.
+A standalone Go-based real-time server browser for Quake III Arena engine games. This tool discovers, polls, and displays active game servers for **Return to Castle Wolfenstein (RTCW)** and **Wolfenstein: Enemy Territory (ET)** via a Bootstrap-powered frontend.
 
-Live Demo: [click here](https://list.s4ndmod.com/)
+Live Server Viewer: [https://list.s4ndmod.com](https://list.s4ndmod.com)
 
+---
+
+## Adding Your Server to the List
+
+To send direct heartbeats and keep your server visible even if the official master is down, add the following to your server configuration:
+
+```
+set sv_master5 wolfmaster.s4ndmod.com
+```
 ---
 
 ## Features
 
-**Master Server Polling** – Queries the official master server (`wolfmaster.idsoftware.com`) for active servers.
-**Built-in Master UDP** – Serves Quake 3 `getservers` and accepts `heartbeat` on UDP 27950.
-**Smart Poller** – Continuously polls servers for real-time status updates.
-**Web API** – Exposes a `/api/servers` endpoint for consuming live server data.
-**Bootstrap Frontend** – dark-themed interface with filtering, status indicators, player lists, and colorized nicknames.
+* **Master Server Polling** – Queries the official master server (`wolfmaster.idsoftware.com`) every 5 minutes for active servers.
+* **Built-in Master UDP** – Serves Quake 3 `getservers` requests and accepts `heartbeat` messages on UDP port 27950.
+* **Direct Heartbeat Integration** – Combines official master results with servers sending direct heartbeats to the s4ndmod master (`wolfmaster.s4ndmod.com`).
+* **Resilient Listing** – Servers sending direct heartbeats remain visible if the official master goes offline.
+* **Broadcast Icon Indicator** – Servers sending direct heartbeats are marked with a broadcast icon next to their online status.
+* **Smart Poller** – Continuously polls servers for real-time status updates.
+* **Web API** – Exposes a `/api/servers` endpoint for consuming live server data.
+* **Bootstrap Frontend** – Dark-themed interface with filtering, status indicators, player lists, and colorized nicknames.
 
 ---
 
@@ -28,7 +40,7 @@ Live Demo: [click here](https://list.s4ndmod.com/)
 ### Build from Source
 
 ```bash
-git clone https://github.com/youruser/q3master.git
+git clone https://github.com/s4ndm4nn/q3master.git
 cd q3master
 go build -o q3master ./cmd/q3master
 ./q3master
@@ -74,8 +86,9 @@ Each object includes:
 
 ## Master UDP
 
-- Listens on UDP `:27950` and responds to `getservers <protocol> ...` with `getserversResponse` containing known servers (merged from official master and heartbeats).
-- Accepts `heartbeat` from game servers (adds/refreshes entry) and `shutdown` (removes entry). Heartbeat-sourced servers are polled immediately to enrich info and determine protocol.
+* Listens on UDP `:27950` and responds to `getservers <protocol> ...` with `getserversResponse` containing known servers (merged from official master and direct heartbeats).
+* Accepts `heartbeat` from game servers (adds/refreshes entry) and `shutdown` (removes entry).
+* Heartbeat-sourced servers are polled immediately to enrich info and determine protocol.
 
 ---
 
@@ -85,10 +98,11 @@ The frontend is served at `/`. It includes:
 
 * Auto-refresh every 10 seconds
 * Filter/search by name, mod, map, IP, version
-* Q3 Colored player and bot lists
+* Q3 colored player and bot lists
 * Protocol filter tabs
 * Click-to-copy IP
 * 🟢/🔴 Status indicators with "last seen" info
+* Broadcast icon next to servers sending direct heartbeats
 
 ---
 
@@ -101,9 +115,9 @@ q3master/
 │       └── main.go           # Application entrypoint (HTTP server wiring)
 ├── internal/
 │   ├── servers/              # Master UDP, discovery, polling, janitor, types, store
-│   │   ├── master.go
-│   │   ├── q3master_server.go
 │   │   ├── q3master_poller.go
+│   │   ├── q3master_server.go
+│   │   ├── q3server_poller.go
 │   │   ├── janitor.go
 │   │   ├── types.go
 │   │   ├── list.go
