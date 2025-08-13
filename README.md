@@ -2,7 +2,7 @@
 
 A standalone Go-based real-time server browser for Quake III Arena engine games. This tool discovers, polls, and displays active game servers for **Return to Castle Wolfenstein (RTCW)** and **Wolfenstein: Enemy Territory (ET)** via a Bootstrap-powered frontend.
 
-Live Server Viewer: [https://list.s4ndmod.com](https://list.s4ndmod.com)
+Live Server Viewer: [list.s4ndmod.com](https://list.s4ndmod.com)
 
 ---
 
