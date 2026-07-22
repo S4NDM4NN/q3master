@@ -27,3 +27,9 @@ func ServeServersAPI(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(list)
 }
 
+// ServeMasterStatusAPI responds with the reachability of the real master.
+func ServeMasterStatusAPI(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(servers.GetMasterStatus())
+}
+

@@ -53,6 +53,11 @@
     RTCW / ET Server List
   </h1>
 
+  <div class="mb-3" id="master-status">
+    <span class="status-dot offline-dot" id="master-status-dot"></span>
+    <span id="master-status-label" class="server-status">Official master: checking...</span>
+  </div>
+
   <div class="toolbar">
     <input type="text" id="server-filter" class="form-control bg-dark text-light border-secondary" placeholder="Filter servers... (hostname, map, mod, ip, version)" style="max-width:420px;">
     <div class="form-check">
@@ -296,8 +301,20 @@
     // search box: debounced re-render
     $('#server-filter').off('input').on('input', refreshDebounced);
 
+    function refreshMasterStatus(){
+      $.getJSON("/api/master-status", function(status){
+        const dot = status.up ? "online-dot" : "offline-dot";
+        $("#master-status-dot").removeClass("online-dot offline-dot").addClass(dot);
+        $("#master-status-label").text(
+          "Official master (wolfmaster.idsoftware.com): " + (status.up ? "reachable" : "unreachable")
+        );
+      });
+    }
+
     setInterval(refreshServers, 10000);
     refreshServers();
+    setInterval(refreshMasterStatus, 60000);
+    refreshMasterStatus();
   </script>
 </body>
 </html>

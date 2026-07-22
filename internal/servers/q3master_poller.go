@@ -4,8 +4,38 @@ import (
     "bytes"
     "fmt"
     "net"
+    "sync"
     "time"
 )
+
+// MasterStatus reports whether the real id Software master is reachable.
+type MasterStatus struct {
+    Up          bool      `json:"up"`
+    LastChecked time.Time `json:"last_checked"`
+    LastSuccess time.Time `json:"last_success"`
+}
+
+var (
+    masterStatus      MasterStatus
+    masterStatusMutex sync.Mutex
+)
+
+// GetMasterStatus returns the last known reachability of the real master.
+func GetMasterStatus() MasterStatus {
+    masterStatusMutex.Lock()
+    defer masterStatusMutex.Unlock()
+    return masterStatus
+}
+
+func setMasterStatus(up bool) {
+    masterStatusMutex.Lock()
+    defer masterStatusMutex.Unlock()
+    masterStatus.LastChecked = time.Now()
+    masterStatus.Up = up
+    if up {
+        masterStatus.LastSuccess = masterStatus.LastChecked
+    }
+}
 
 // StartDiscovery periodically refreshes server addresses from the master list.
 func StartDiscovery(interval time.Duration) {
@@ -18,6 +48,7 @@ func StartDiscovery(interval time.Duration) {
 }
 
 func refreshFromMaster() {
+    anySuccess := false
     for _, proto := range protocols {
         conn, err := net.Dial("udp", masterHost)
         if err != nil {
@@ -87,6 +118,10 @@ func refreshFromMaster() {
                     serverMutex.Unlock()
                 }
             }
+            if gotResponse {
+                anySuccess = true
+            }
         }()
     }
+    setMasterStatus(anySuccess)
 }

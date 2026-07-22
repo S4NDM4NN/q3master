@@ -20,3 +20,6 @@
 
 # Env files
 .env
+
+# Persisted server list (local dev)
+/data/
