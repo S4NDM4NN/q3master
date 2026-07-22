@@ -30,17 +30,23 @@ func refreshFromMaster() {
 
             _, err = conn.Write([]byte(fmt.Sprintf("\xff\xff\xff\xffgetservers %s full empty", proto)))
             if err != nil {
+                fmt.Printf("Error sending getservers to master %s (protocol %s): %v\n", masterHost, proto, err)
                 return
             }
 
+            gotResponse := false
             for {
                 // Allow more time for multi-packet responses from master
                 conn.SetReadDeadline(time.Now().Add(2 * time.Second))
                 buffer := make([]byte, 1400)
                 n, err := conn.Read(buffer)
                 if err != nil {
+                    if !gotResponse {
+                        fmt.Printf("No response from master %s (protocol %s): %v\n", masterHost, proto, err)
+                    }
                     break
                 }
+                gotResponse = true
 
                 data := buffer[:n]
                 if bytes.HasPrefix(data, []byte("\xff\xff\xff\xffgetserversResponse\n")) {

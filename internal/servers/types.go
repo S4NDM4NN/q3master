@@ -48,5 +48,5 @@ var (
     serverMutex sync.Mutex
 
     protocols  = []string{"57", "60", "84"}
-    masterHost = "wolfmaster.idsoftware.com:27950"
+    masterHost = "wolfmaster.s4ndmod.com:27950"
 )
