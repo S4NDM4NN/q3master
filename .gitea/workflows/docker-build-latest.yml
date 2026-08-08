@@ -27,7 +27,16 @@ jobs:
           username: ${{secrets.REGISTRY_USER}}
           password: ${{secrets.REGISTRY_PASSWORD}}
 
-      # Tag matches pr-<number> so an Argo Pull Request generator can key an
+      # Pushed to a SEPARATE repo path (q3master-pr, not q3master) on
+      # purpose: the q3master Kargo Warehouse subscribes to
+      # repo.s4ndmod.com/s4ndmod/q3master with imageSelectionStrategy:
+      # NewestBuild, which does not treat tagPattern as a hard filter --
+      # it just promotes whatever was pushed most recently. A pr-<number>
+      # tag pushed to that same path got auto-promoted into q3master-dev
+      # (see ~/gitops history around 2026-08-08). Keeping PR images on
+      # their own repo path makes that structurally impossible, regardless
+      # of Kargo's exact tag-filtering behavior. Tag still matches
+      # pr-<number> so the Argo Pull Request generator can key an
       # ephemeral preview environment off this specific PR's image (see
       # ~/gitops apps/q3master/overlays/pr).
       - name: Build & push (PR preview image, for Argo PR environments)
@@ -36,7 +45,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: repo.s4ndmod.com/s4ndmod/q3master:pr-${{ gitea.event.pull_request.number }}
+          tags: repo.s4ndmod.com/s4ndmod/q3master-pr:pr-${{ gitea.event.pull_request.number }}
 
       # Posts (or updates, on later pushes to the same PR) a single comment
       # with the preview env URL. Uses Gitea's auto-provisioned Actions
