@@ -36,25 +36,25 @@ func runRollup() {
 	if err := rollup(ctx, hourlyColl, "daily", "address", "hour_ts", "day_ts", "day"); err != nil {
 		log.Printf("history: per-server daily rollup failed: %v", err)
 	}
-	if err := rollupNetwork(ctx, networkSamplesColl, "network_hourly", "ts", "total_players", "online_server_count", "hour_ts", "hour"); err != nil {
+	if err := rollupNetwork(ctx, networkSamplesColl, "network_hourly", "protocol", "ts", "total_players", "online_server_count", "hour_ts", "hour"); err != nil {
 		log.Printf("history: network hourly rollup failed: %v", err)
 	}
-	if err := rollupNetwork(ctx, networkHourlyColl, "network_daily", "hour_ts", "avg_players", "avg_online_servers", "day_ts", "day"); err != nil {
+	if err := rollupNetwork(ctx, networkHourlyColl, "network_daily", "protocol", "hour_ts", "avg_players", "avg_online_servers", "day_ts", "day"); err != nil {
 		log.Printf("history: network daily rollup failed: %v", err)
 	}
 }
 
 // rollup aggregates a per-server source collection (raw samples, keyed by
 // player_count/max_players, or hourly buckets, keyed by avg/min/max_players)
-// into a per-server destination collection grouped by address + truncated
-// time bucket, upserting via $merge.
+// into a per-server destination collection grouped by metaField (address) +
+// truncated time bucket, upserting via $merge.
 func rollup(ctx context.Context, src *mongo.Collection, destName, metaField, srcTsField, destTsField, truncUnit string) error {
 	playerField, minField, maxField, countExpr := perServerSourceFields(srcTsField)
 
 	pipeline := mongo.Pipeline{
 		{{Key: "$group", Value: bson.D{
 			{Key: "_id", Value: bson.D{
-				{Key: "address", Value: "$" + metaField},
+				{Key: metaField, Value: "$" + metaField},
 				{Key: destTsField, Value: bson.D{{Key: "$dateTrunc", Value: bson.D{
 					{Key: "date", Value: "$" + srcTsField},
 					{Key: "unit", Value: truncUnit},
@@ -67,7 +67,7 @@ func rollup(ctx context.Context, src *mongo.Collection, destName, metaField, src
 		}}},
 		{{Key: "$project", Value: bson.D{
 			{Key: "_id", Value: 0},
-			{Key: "address", Value: "$_id.address"},
+			{Key: metaField, Value: "$_id." + metaField},
 			{Key: destTsField, Value: "$_id." + destTsField},
 			{Key: "avg_players", Value: 1},
 			{Key: "min_players", Value: 1},
@@ -76,7 +76,7 @@ func rollup(ctx context.Context, src *mongo.Collection, destName, metaField, src
 		}}},
 		{{Key: "$merge", Value: bson.D{
 			{Key: "into", Value: destName},
-			{Key: "on", Value: bson.A{"address", destTsField}},
+			{Key: "on", Value: bson.A{metaField, destTsField}},
 			{Key: "whenMatched", Value: "replace"},
 			{Key: "whenNotMatched", Value: "insert"},
 		}}},
@@ -89,19 +89,23 @@ func rollup(ctx context.Context, src *mongo.Collection, destName, metaField, src
 	return cur.Close(ctx)
 }
 
-// rollupNetwork is the network-wide equivalent of rollup: no address
-// grouping, and the two source fields (total players / online server count)
-// are given explicitly since the raw and hourly source collections name them
-// differently (total_players/online_server_count vs avg_players/avg_online_servers).
-func rollupNetwork(ctx context.Context, src *mongo.Collection, destName, srcTsField, playersField, onlineField, destTsField, truncUnit string) error {
+// rollupNetwork is the network-wide equivalent of rollup: grouped by
+// protocol bucket instead of server address, and the two source fields
+// (total players / online server count) are given explicitly since the raw
+// and hourly source collections name them differently
+// (total_players/online_server_count vs avg_players/avg_online_servers).
+func rollupNetwork(ctx context.Context, src *mongo.Collection, destName, metaField, srcTsField, playersField, onlineField, destTsField, truncUnit string) error {
 	countExpr := sampleCountExpr(srcTsField)
 
 	pipeline := mongo.Pipeline{
 		{{Key: "$group", Value: bson.D{
-			{Key: "_id", Value: bson.D{{Key: "$dateTrunc", Value: bson.D{
-				{Key: "date", Value: "$" + srcTsField},
-				{Key: "unit", Value: truncUnit},
-			}}}},
+			{Key: "_id", Value: bson.D{
+				{Key: metaField, Value: "$" + metaField},
+				{Key: destTsField, Value: bson.D{{Key: "$dateTrunc", Value: bson.D{
+					{Key: "date", Value: "$" + srcTsField},
+					{Key: "unit", Value: truncUnit},
+				}}}},
+			}},
 			{Key: "avg_players", Value: bson.D{{Key: "$avg", Value: "$" + playersField}}},
 			{Key: "min_players", Value: bson.D{{Key: "$min", Value: "$" + playersField}}},
 			{Key: "max_players", Value: bson.D{{Key: "$max", Value: "$" + playersField}}},
@@ -112,7 +116,8 @@ func rollupNetwork(ctx context.Context, src *mongo.Collection, destName, srcTsFi
 		}}},
 		{{Key: "$project", Value: bson.D{
 			{Key: "_id", Value: 0},
-			{Key: destTsField, Value: "$_id"},
+			{Key: metaField, Value: "$_id." + metaField},
+			{Key: destTsField, Value: "$_id." + destTsField},
 			{Key: "avg_players", Value: 1},
 			{Key: "min_players", Value: 1},
 			{Key: "max_players", Value: 1},
@@ -123,7 +128,7 @@ func rollupNetwork(ctx context.Context, src *mongo.Collection, destName, srcTsFi
 		}}},
 		{{Key: "$merge", Value: bson.D{
 			{Key: "into", Value: destName},
-			{Key: "on", Value: destTsField},
+			{Key: "on", Value: bson.A{metaField, destTsField}},
 			{Key: "whenMatched", Value: "replace"},
 			{Key: "whenNotMatched", Value: "insert"},
 		}}},

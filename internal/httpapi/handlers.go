@@ -57,11 +57,13 @@ func ServeHistoryAPI(w http.ResponseWriter, r *http.Request) {
 
 // ServeNetworkHistoryAPI responds with network-wide history: total real
 // players and online server count over time. Query params: range ("7d" |
-// "30d" | "all", default "7d").
+// "30d" | "all", default "7d"), protocol (a Q3 protocol number e.g. "84", or
+// "all" for the combined fleet, default "all").
 func ServeNetworkHistoryAPI(w http.ResponseWriter, r *http.Request) {
     since := history.ParseRange(r.URL.Query().Get("range"))
+    protocol := r.URL.Query().Get("protocol")
 
-    points, err := history.GetNetworkHistory(r.Context(), since)
+    points, err := history.GetNetworkHistory(r.Context(), protocol, since)
     if err != nil {
         http.Error(w, "failed to load network history", http.StatusInternalServerError)
         return

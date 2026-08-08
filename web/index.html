@@ -65,11 +65,11 @@
   <div class="card" id="network-overview">
     <div class="card-body">
       <div class="chart-col">
-        <span class="chart-label">Total real players (7d)</span>
+        <span class="chart-label" id="network-players-label">Total real players (7d)</span>
         <canvas id="network-players-chart" class="history-chart" style="width:100%;height:60px;"></canvas>
       </div>
       <div class="chart-col">
-        <span class="chart-label">Online servers (7d)</span>
+        <span class="chart-label" id="network-servers-label">Online servers (7d)</span>
         <canvas id="network-servers-chart" class="history-chart" style="width:100%;height:60px;"></canvas>
       </div>
     </div>
@@ -185,7 +185,12 @@
     });
 
     function refreshNetworkHistory(){
-      $.getJSON('/api/history/network?range=7d', function(points){
+      const protocol = $("input[name='protocol']:checked").val() || 'all';
+      const suffix = protocol === 'all' ? '' : ' — ' + protocolFilterLabel(protocol);
+      $('#network-players-label').text('Total real players (7d)' + suffix);
+      $('#network-servers-label').text('Online servers (7d)' + suffix);
+
+      $.getJSON('/api/history/network?range=7d&protocol=' + encodeURIComponent(protocol), function(points){
         const pts = points || [];
         drawSparkline(document.getElementById('network-players-chart'),
           pts.map(p => ({ x: new Date(p.ts).getTime(), y: p.total_players })), {color:'#4caf50'});
@@ -223,6 +228,12 @@
 
     function getProtocolLabel(p){
       switch(p){case 57:return'RTCW 1.0';case 60:return'RTCW 1.4';case 84:return'ET 2.60b';default:return'Unknown';}
+    }
+
+    // Same labels as getProtocolLabel, but for the protocol-filter's string
+    // values ("all", "57", "60", "84") rather than a numeric server.protocol.
+    function protocolFilterLabel(v){
+      return v === 'all' ? 'All' : getProtocolLabel(parseInt(v, 10));
     }
 
     function formatLastSeen(ts){
@@ -404,7 +415,10 @@
     const refreshDebounced = debounce(() => refreshServers(false), 150);
 
     // protocol + showOffline: instant re-render
-    $('#protocol-filter input').off('change').on('change', refreshNow);
+    $('#protocol-filter input').off('change').on('change', function(){
+      refreshNow();
+      refreshNetworkHistory();
+    });
     $('#showOfflineToggle').off('change').on('change', refreshNow);
 
     // search box: debounced re-render

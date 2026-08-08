@@ -93,11 +93,16 @@ func GetServerHistory(ctx context.Context, address string, since time.Time) ([]P
 	return points, nil
 }
 
-// GetNetworkHistory returns network-wide history points since the given
-// cutoff, merging tiers the same way GetServerHistory does.
-func GetNetworkHistory(ctx context.Context, since time.Time) ([]NetworkPoint, error) {
+// GetNetworkHistory returns network-wide history points for one protocol
+// bucket ("all" for the combined fleet, or a Q3 protocol number as a string
+// e.g. "84") since the given cutoff, merging tiers the same way
+// GetServerHistory does.
+func GetNetworkHistory(ctx context.Context, protocol string, since time.Time) ([]NetworkPoint, error) {
 	if !enabled {
 		return []NetworkPoint{}, nil
+	}
+	if protocol == "" {
+		protocol = "all"
 	}
 
 	now := time.Now().UTC()
@@ -107,7 +112,7 @@ func GetNetworkHistory(ctx context.Context, since time.Time) ([]NetworkPoint, er
 	points := []NetworkPoint{}
 
 	if since.Before(hourlyCutoff) {
-		docs, err := queryNetworkDaily(ctx, since, hourlyCutoff)
+		docs, err := queryNetworkDaily(ctx, protocol, since, hourlyCutoff)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +126,7 @@ func GetNetworkHistory(ctx context.Context, since time.Time) ([]NetworkPoint, er
 		if since.After(hourlyCutoff) {
 			from = since
 		}
-		docs, err := queryNetworkHourly(ctx, from, rawCutoff)
+		docs, err := queryNetworkHourly(ctx, protocol, from, rawCutoff)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +139,7 @@ func GetNetworkHistory(ctx context.Context, since time.Time) ([]NetworkPoint, er
 	if since.After(rawCutoff) {
 		from = since
 	}
-	rawDocs, err := queryNetworkRaw(ctx, from, now)
+	rawDocs, err := queryNetworkRaw(ctx, protocol, from, now)
 	if err != nil {
 		return nil, err
 	}
@@ -194,8 +199,11 @@ func queryDaily(ctx context.Context, address string, from, to time.Time) ([]dail
 	return docs, nil
 }
 
-func queryNetworkRaw(ctx context.Context, from, to time.Time) ([]networkSampleDoc, error) {
-	filter := bson.D{{Key: "ts", Value: bson.D{{Key: "$gte", Value: from}, {Key: "$lte", Value: to}}}}
+func queryNetworkRaw(ctx context.Context, protocol string, from, to time.Time) ([]networkSampleDoc, error) {
+	filter := bson.D{
+		{Key: "protocol", Value: protocol},
+		{Key: "ts", Value: bson.D{{Key: "$gte", Value: from}, {Key: "$lte", Value: to}}},
+	}
 	cur, err := networkSamplesColl.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "ts", Value: 1}}))
 	if err != nil {
 		return nil, err
@@ -207,8 +215,11 @@ func queryNetworkRaw(ctx context.Context, from, to time.Time) ([]networkSampleDo
 	return docs, nil
 }
 
-func queryNetworkHourly(ctx context.Context, from, to time.Time) ([]networkHourlyDoc, error) {
-	filter := bson.D{{Key: "hour_ts", Value: bson.D{{Key: "$gte", Value: from}, {Key: "$lte", Value: to}}}}
+func queryNetworkHourly(ctx context.Context, protocol string, from, to time.Time) ([]networkHourlyDoc, error) {
+	filter := bson.D{
+		{Key: "protocol", Value: protocol},
+		{Key: "hour_ts", Value: bson.D{{Key: "$gte", Value: from}, {Key: "$lte", Value: to}}},
+	}
 	cur, err := networkHourlyColl.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "hour_ts", Value: 1}}))
 	if err != nil {
 		return nil, err
@@ -220,8 +231,11 @@ func queryNetworkHourly(ctx context.Context, from, to time.Time) ([]networkHourl
 	return docs, nil
 }
 
-func queryNetworkDaily(ctx context.Context, from, to time.Time) ([]networkDailyDoc, error) {
-	filter := bson.D{{Key: "day_ts", Value: bson.D{{Key: "$gte", Value: from}, {Key: "$lte", Value: to}}}}
+func queryNetworkDaily(ctx context.Context, protocol string, from, to time.Time) ([]networkDailyDoc, error) {
+	filter := bson.D{
+		{Key: "protocol", Value: protocol},
+		{Key: "day_ts", Value: bson.D{{Key: "$gte", Value: from}, {Key: "$lte", Value: to}}},
+	}
 	cur, err := networkDailyColl.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "day_ts", Value: 1}}))
 	if err != nil {
 		return nil, err

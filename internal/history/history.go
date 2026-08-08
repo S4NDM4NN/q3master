@@ -98,7 +98,7 @@ func ensureCollections(ctx context.Context) error {
 	if err := createTimeSeries(ctx, "samples", "address", RawRetention); err != nil {
 		return err
 	}
-	if err := createTimeSeries(ctx, "network_samples", "", RawRetention); err != nil {
+	if err := createTimeSeries(ctx, "network_samples", "protocol", RawRetention); err != nil {
 		return err
 	}
 	if err := createTieredIndexes(ctx, "hourly", "address", "hour_ts", HourlyRetention); err != nil {
@@ -107,10 +107,10 @@ func ensureCollections(ctx context.Context) error {
 	if err := createTieredIndexes(ctx, "daily", "address", "day_ts", 0); err != nil {
 		return err
 	}
-	if err := createGlobalIndex(ctx, "network_hourly", "hour_ts", HourlyRetention); err != nil {
+	if err := createTieredIndexes(ctx, "network_hourly", "protocol", "hour_ts", HourlyRetention); err != nil {
 		return err
 	}
-	if err := createGlobalIndex(ctx, "network_daily", "day_ts", 0); err != nil {
+	if err := createTieredIndexes(ctx, "network_daily", "protocol", "day_ts", 0); err != nil {
 		return err
 	}
 	return nil
@@ -132,9 +132,10 @@ func createTimeSeries(ctx context.Context, name, metaField string, expireAfter t
 	return err
 }
 
-// createTieredIndexes sets up a per-address rollup collection: a unique
-// compound index for upsert targeting, plus (if ttl > 0) a separate TTL
-// index on the timestamp field alone (TTL indexes must be single-field).
+// createTieredIndexes sets up a rollup collection partitioned by metaField
+// (address for per-server collections, protocol for network-wide ones): a
+// unique compound index for upsert targeting, plus (if ttl > 0) a separate
+// TTL index on the timestamp field alone (TTL indexes must be single-field).
 func createTieredIndexes(ctx context.Context, collName, metaField, tsField string, ttl time.Duration) error {
 	coll := db.Collection(collName)
 	models := []mongo.IndexModel{
@@ -150,22 +151,6 @@ func createTieredIndexes(ctx context.Context, collName, metaField, tsField strin
 		})
 	}
 	_, err := coll.Indexes().CreateMany(ctx, models)
-	return err
-}
-
-// createGlobalIndex sets up a network-wide rollup collection, where the
-// timestamp field alone is unique, so the same index can double as the TTL
-// index.
-func createGlobalIndex(ctx context.Context, collName, tsField string, ttl time.Duration) error {
-	coll := db.Collection(collName)
-	idxOpts := options.Index().SetUnique(true)
-	if ttl > 0 {
-		idxOpts = idxOpts.SetExpireAfterSeconds(int32(ttl.Seconds()))
-	}
-	_, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
-		Keys:    bson.D{{Key: tsField, Value: 1}},
-		Options: idxOpts,
-	})
 	return err
 }
 
@@ -205,13 +190,19 @@ type dailyDoc struct {
 	SampleCount int       `bson:"sample_count"`
 }
 
+// networkSampleDoc/networkHourlyDoc/networkDailyDoc are partitioned by
+// Protocol so the network-wide overview can be filtered to a single game
+// protocol, not just the "all" aggregate. Protocol holds a Q3 protocol
+// number as a string (e.g. "84"), or "all" for the combined-fleet bucket.
 type networkSampleDoc struct {
 	Ts                time.Time `bson:"ts"`
+	Protocol          string    `bson:"protocol"`
 	TotalPlayers      int       `bson:"total_players"`
 	OnlineServerCount int       `bson:"online_server_count"`
 }
 
 type networkHourlyDoc struct {
+	Protocol         string    `bson:"protocol"`
 	HourTs           time.Time `bson:"hour_ts"`
 	AvgPlayers       float64   `bson:"avg_players"`
 	MinPlayers       int       `bson:"min_players"`
@@ -223,6 +214,7 @@ type networkHourlyDoc struct {
 }
 
 type networkDailyDoc struct {
+	Protocol         string    `bson:"protocol"`
 	DayTs            time.Time `bson:"day_ts"`
 	AvgPlayers       float64   `bson:"avg_players"`
 	MinPlayers       int       `bson:"min_players"`
@@ -267,13 +259,16 @@ func sampleWriter() {
 }
 
 // RecordNetworkSample records a single network-wide snapshot: total real
-// players and online server count across the whole tracked fleet.
-func RecordNetworkSample(totalPlayers, onlineServers int) {
+// players and online server count for one protocol bucket ("all" for the
+// combined fleet, or a Q3 protocol number as a string e.g. "84" for just
+// that protocol), so the overview can later be filtered per-protocol.
+func RecordNetworkSample(protocol string, totalPlayers, onlineServers int) {
 	if !enabled {
 		return
 	}
 	doc := networkSampleDoc{
 		Ts:                time.Now().UTC(),
+		Protocol:          protocol,
 		TotalPlayers:      totalPlayers,
 		OnlineServerCount: onlineServers,
 	}
