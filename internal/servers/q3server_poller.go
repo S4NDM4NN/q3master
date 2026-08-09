@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"q3master/internal/history"
 )
 
 // --- Poll worker queue with de-duplication ---
@@ -199,6 +201,8 @@ func pollServer(s *ServerEntry) {
 		s.Protocol = newStatus.Protocol
 	}
 	serverMutex.Unlock()
+
+	history.RecordSample(s.Address, newStatus.PlayerCount, newStatus.MaxPlayers, newStatus.Map)
 }
 
 func markOffline(s *ServerEntry) {
