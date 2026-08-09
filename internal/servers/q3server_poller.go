@@ -101,7 +101,7 @@ func pollServer(s *ServerEntry) {
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		markOffline(s)
+		retryIfProvisional(s, markOffline(s))
 		return
 	}
 	defer conn.Close()
@@ -109,20 +109,20 @@ func pollServer(s *ServerEntry) {
 	conn.SetDeadline(time.Now().Add(3 * time.Second))
 	_, err = conn.Write([]byte("\xff\xff\xff\xffgetstatus\n"))
 	if err != nil {
-		markOffline(s)
+		retryIfProvisional(s, markOffline(s))
 		return
 	}
 
 	buffer := make([]byte, 4096)
 	n, err := conn.Read(buffer)
 	if err != nil || n == 0 {
-		markOffline(s)
+		retryIfProvisional(s, markOffline(s))
 		return
 	}
 
 	lines := strings.Split(string(buffer[:n]), "\n")
 	if len(lines) < 2 {
-		markOffline(s)
+		retryIfProvisional(s, markOffline(s))
 		return
 	}
 
@@ -205,15 +205,56 @@ func pollServer(s *ServerEntry) {
 	history.RecordSample(s.Address, newStatus.PlayerCount, newStatus.MaxPlayers, newStatus.Map)
 }
 
-func markOffline(s *ServerEntry) {
+// offlineAfterMissedPolls is how many consecutive failed polls a
+// previously-online server must rack up before it's actually marked
+// offline. UDP is lossy, so a single dropped/timed-out getstatus request
+// isn't reliable evidence a server actually went down -- without this,
+// one missed packet on a populous server would yank its whole player
+// count out of (and back into) the network-wide totals every time it
+// happened, even though nothing really changed.
+const offlineAfterMissedPolls = 2
+
+// retryDelay is how long to wait before re-polling a server that just
+// missed a poll but hasn't hit offlineAfterMissedPolls yet. Without this,
+// the next attempt would only come from the passive sweep in
+// pollServers(), which for a server that just looked healthy (recent
+// LastSeen) can be up to ~2 minutes away -- too slow to tell a genuine
+// blip apart from a real outage.
+const retryDelay = 5 * time.Second
+
+// markOffline records a failed poll and reports whether the server is
+// still within its grace period (true) or was actually flipped offline
+// (false).
+func markOffline(s *ServerEntry) bool {
 	serverMutex.Lock()
 	defer serverMutex.Unlock()
 
-	s.Online = false
 	s.MissedPolls++
 	if !s.LastGoodPoll.IsZero() {
-		s.State = StateOffline
-	} else {
-		s.State = StateNew
+		// Was online before: give it offlineAfterMissedPolls consecutive
+		// misses before actually flipping it offline.
+		if s.MissedPolls >= offlineAfterMissedPolls {
+			s.Online = false
+			s.State = StateOffline
+			return false
+		}
+		return true
 	}
+	// Never had a good poll: no "online" status to protect, so mark it
+	// immediately (existing StateNew eviction in janitor.go still applies
+	// at 10 missed polls).
+	s.Online = false
+	s.State = StateNew
+	return false
+}
+
+// retryIfProvisional schedules a fast re-poll for a server still within
+// its offline grace period, instead of waiting on the passive sweep.
+func retryIfProvisional(s *ServerEntry, stillProvisional bool) {
+	if !stillProvisional {
+		return
+	}
+	time.AfterFunc(retryDelay, func() {
+		EnqueuePoll(s.Address)
+	})
 }

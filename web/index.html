@@ -62,6 +62,12 @@
     <span id="master-status-label" class="server-status">Official master: checking...</span>
   </div>
 
+  <div class="mb-3 server-status">
+    Running a server? Add this master so it shows up here:
+    <code id="master-cvar">set sv_master5 wolfmaster.s4ndmod.com</code>
+    <i class="bi bi-clipboard clipboard-icon" data-ip="set sv_master5 wolfmaster.s4ndmod.com" title="Copy to clipboard"></i>
+  </div>
+
   <div class="card" id="network-overview">
     <div class="card-body">
       <div class="chart-col">
@@ -270,10 +276,11 @@
         // Never show "new"
         let items = data.filter(s => !isNewServer(s));
 
-        // Apply protocol + offline + search filters
+        // Apply protocol + search filters (not showOffline yet - counts
+        // below need the true online/offline split regardless of whether
+        // offline servers are actually being rendered as cards)
         items = items
           .filter(s => selectedProtocol === "all" || String(s.protocol) === selectedProtocol)
-          .filter(s => showOffline || s.online === true)
           .filter(s =>
             (s.hostname||'').toLowerCase().includes(q) ||
             (s.map||'').toLowerCase().includes(q) ||
@@ -283,10 +290,15 @@
             (s.version||'').toLowerCase().includes(q)
           );
 
-        // Counts reflect the currently visible list
+        // Counts reflect protocol/search filters but not the showOffline
+        // toggle, so the offline count stays visible even when offline
+        // cards themselves are hidden.
         const onlineCount  = items.filter(s => s.online === true).length;
         const offlineCount = items.filter(s => s.online === false).length;
         $("#server-counts").text(`🟢 ${onlineCount} / 🔴 ${offlineCount}`);
+
+        // Now apply showOffline for what actually gets rendered as cards.
+        items = items.filter(s => showOffline || s.online === true);
 
         // Sort + render as before
         items.sort((a,b)=>{
@@ -352,6 +364,7 @@
                   <div class="info-grid">
                     <div><span class="info-label">Gametype</span>${server.gametype||'<em>unknown</em>'}</div>
                     <div><span class="info-label">Version</span>${server.version||'<em>unknown</em>'}</div>
+                    <div><span class="info-label">Missed Polls</span><span style="color:${(server.missed_polls||0)>0?'#f0ad4e':'inherit'}">${server.missed_polls??0}</span></div>
                   </div>
                   <div class="mt-3">
                     <span class="chart-label">Player history (7d)</span>
