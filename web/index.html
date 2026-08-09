@@ -276,10 +276,11 @@
         // Never show "new"
         let items = data.filter(s => !isNewServer(s));
 
-        // Apply protocol + offline + search filters
+        // Apply protocol + search filters (not showOffline yet - counts
+        // below need the true online/offline split regardless of whether
+        // offline servers are actually being rendered as cards)
         items = items
           .filter(s => selectedProtocol === "all" || String(s.protocol) === selectedProtocol)
-          .filter(s => showOffline || s.online === true)
           .filter(s =>
             (s.hostname||'').toLowerCase().includes(q) ||
             (s.map||'').toLowerCase().includes(q) ||
@@ -289,10 +290,15 @@
             (s.version||'').toLowerCase().includes(q)
           );
 
-        // Counts reflect the currently visible list
+        // Counts reflect protocol/search filters but not the showOffline
+        // toggle, so the offline count stays visible even when offline
+        // cards themselves are hidden.
         const onlineCount  = items.filter(s => s.online === true).length;
         const offlineCount = items.filter(s => s.online === false).length;
         $("#server-counts").text(`🟢 ${onlineCount} / 🔴 ${offlineCount}`);
+
+        // Now apply showOffline for what actually gets rendered as cards.
+        items = items.filter(s => showOffline || s.online === true);
 
         // Sort + render as before
         items.sort((a,b)=>{
