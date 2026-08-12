@@ -43,6 +43,7 @@ func main() {
 
     // HTTP endpoints
     http.HandleFunc("/api/servers", httpapi.WithCORS(httpapi.ServeServersAPI))
+    http.HandleFunc("/api/server", httpapi.WithCORS(httpapi.ServeServerAPI))
     http.HandleFunc("/api/master-status", httpapi.WithCORS(httpapi.ServeMasterStatusAPI))
     http.HandleFunc("/api/history", httpapi.WithCORS(httpapi.ServeHistoryAPI))
     http.HandleFunc("/api/history/network", httpapi.WithCORS(httpapi.ServeNetworkHistoryAPI))

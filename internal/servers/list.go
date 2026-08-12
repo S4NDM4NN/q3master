@@ -17,6 +17,20 @@ func ListServers() []*ServerEntry {
     return list
 }
 
+// GetServer returns a snapshot of a single server entry by address, and
+// whether it was found.
+func GetServer(address string) (*ServerEntry, bool) {
+    serverMutex.Lock()
+    defer serverMutex.Unlock()
+
+    s, ok := serverList[address]
+    if !ok {
+        return nil, false
+    }
+    entryCopy := *s
+    return &entryCopy, true
+}
+
 // ProtocolSummary is the total real player count (bots excluded, since
 // PlayerCount already only counts non-bot players) and number of online
 // servers for one protocol bucket.

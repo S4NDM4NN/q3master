@@ -28,6 +28,25 @@ func ServeServersAPI(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(list)
 }
 
+// ServeServerAPI responds with a single server's details. Query params:
+// address (required, "ip:port"). 404s if the server isn't known.
+func ServeServerAPI(w http.ResponseWriter, r *http.Request) {
+    address := r.URL.Query().Get("address")
+    if address == "" {
+        http.Error(w, "missing address parameter", http.StatusBadRequest)
+        return
+    }
+
+    s, ok := servers.GetServer(address)
+    if !ok {
+        http.Error(w, "server not found", http.StatusNotFound)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(s)
+}
+
 // ServeMasterStatusAPI responds with the reachability of the real master.
 func ServeMasterStatusAPI(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
