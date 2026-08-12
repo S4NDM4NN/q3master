@@ -18,6 +18,43 @@ var (
 	pollQueueMutex sync.Mutex
 )
 
+// --- Per-IP poll pacing ---
+
+// minPollIntervalPerIP is the minimum spacing enforced between poll packets
+// sent to the same IP. Some hosts run several servers (different ports) on
+// one machine, and with 8 poll workers running concurrently those can
+// otherwise all get queued and dispatched within the same instant --
+// several simultaneous getstatus packets landing on one host looks a lot
+// like the opening burst of a UDP scan/flood, and is exactly the kind of
+// traffic a host-side firewall might start rate-limiting or blocking on
+// (see offlineRetryBackoff above for the same concern applied to a single
+// address). Staggering polls to a shared IP keeps our traffic looking like
+// ordinary, spaced-out queries instead.
+const minPollIntervalPerIP = 750 * time.Millisecond
+
+var (
+	ipPollMutex sync.Mutex
+	ipLastPoll  = make(map[string]time.Time)
+)
+
+// waitForIPSlot blocks (if needed) until at least minPollIntervalPerIP has
+// passed since the last poll dispatched to host, then reserves the slot.
+func waitForIPSlot(host string) {
+	for {
+		ipPollMutex.Lock()
+		now := time.Now()
+		last, ok := ipLastPoll[host]
+		if !ok || now.Sub(last) >= minPollIntervalPerIP {
+			ipLastPoll[host] = now
+			ipPollMutex.Unlock()
+			return
+		}
+		wait := minPollIntervalPerIP - now.Sub(last)
+		ipPollMutex.Unlock()
+		time.Sleep(wait)
+	}
+}
+
 // StartPollWorkers spins up N workers to process poll requests.
 func StartPollWorkers(n int) {
 	if n <= 0 {
@@ -134,6 +171,8 @@ func pollServer(s *ServerEntry) {
 	if err != nil {
 		return
 	}
+
+	waitForIPSlot(addr.IP.String())
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
