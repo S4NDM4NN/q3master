@@ -93,9 +93,15 @@ function drawSparkline(canvas, points, opts = {}) {
     }
   }
 
-  // Peak marker: a dot on the highest point, plus (when opts.peakLabel is
-  // set -- used on the roomier detail-page chart, not the small card/
-  // network sparklines) a text label with the value and time.
+  // Peak marker: a dot on the highest point. The readout showing what the
+  // peak actually *is* goes in a fixed top-left corner rather than floating
+  // next to the dot -- a floating label would land wherever the peak
+  // happens to fall in the series, which frequently collides with the
+  // top-right "current value" readout below (e.g. when the count is still
+  // climbing and the peak is also the most recent point). A fixed corner
+  // mirrors that current-value readout and never collides with it,
+  // regardless of chart size, so it works for the small card/network
+  // sparklines too, not just the roomier detail-page chart.
   let peak = points[0];
   for (const p of points) if (p.y > peak.y) peak = p;
   const px = xScale(peak.x), py = yScale(peak.y);
@@ -107,18 +113,18 @@ function drawSparkline(canvas, points, opts = {}) {
   ctx.fill();
   ctx.stroke();
 
-  if (opts.peakLabel) {
-    const label = `peak ${Math.round(peak.y)} · ${formatLastSeen(peak.x)}`;
-    ctx.font = '11px monospace';
-    const labelW = ctx.measureText(label).width;
-    let lx = px - labelW / 2;
-    lx = Math.max(pad, Math.min(w - pad - labelW, lx));
-    const ly = Math.max(12, py - 8);
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(lx - 3, ly - 11, labelW + 6, 14);
-    ctx.fillStyle = '#eee';
-    ctx.fillText(label, lx, ly);
-  }
+  // opts.peakLabel adds the peak's timestamp too -- used on the roomier
+  // detail-page chart where there's room for it.
+  const peakText = opts.peakLabel
+    ? `peak ${Math.round(peak.y)} · ${formatLastSeen(peak.x)}`
+    : `peak ${Math.round(peak.y)}`;
+  ctx.font = '11px monospace';
+  const peakTextW = ctx.measureText(peakText).width;
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(pad - 3, 1, peakTextW + 6, 14);
+  ctx.fillStyle = '#ccc';
+  ctx.textAlign = 'left';
+  ctx.fillText(peakText, pad, 12);
 
   const last = points[points.length - 1];
   ctx.fillStyle = '#ccc';
