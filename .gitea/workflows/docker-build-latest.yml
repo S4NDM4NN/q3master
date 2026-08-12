@@ -35,17 +35,29 @@ jobs:
       # tag pushed to that same path got auto-promoted into q3master-dev
       # (see ~/gitops history around 2026-08-08). Keeping PR images on
       # their own repo path makes that structurally impossible, regardless
-      # of Kargo's exact tag-filtering behavior. Tag still matches
-      # pr-<number> so the Argo Pull Request generator can key an
-      # ephemeral preview environment off this specific PR's image (see
-      # ~/gitops apps/q3master/overlays/pr).
+      # of Kargo's exact tag-filtering behavior.
+      #
+      # Two tags: the floating pr-<number> one for convenience (browsing
+      # the registry by PR), and an immutable pr-<number>-<head_sha> one
+      # that ~/gitops apps/q3master/overlays/pr actually deploys. The
+      # deploy needs the immutable one specifically because ArgoCD's PR
+      # generator re-syncs on a ~60s poll timed off the git push, which
+      # can land before this build finishes pushing -- with a floating tag,
+      # that race meant the preview pod would silently start on the
+      # *previous* commit's image and never self-correct (see ~/gitops
+      # history/incident around 2026-08-12). Keying the tag to the commit
+      # sha means a too-early sync just gets ImagePullBackOff, which
+      # resolves itself the moment this push completes, instead of quietly
+      # serving stale code.
       - name: Build & push (PR preview image, for Argo PR environments)
         if: gitea.event_name == 'pull_request'
         uses: docker/build-push-action@v3
         with:
           context: .
           push: true
-          tags: repo.s4ndmod.com/s4ndmod/q3master-pr:pr-${{ gitea.event.pull_request.number }}
+          tags: |
+            repo.s4ndmod.com/s4ndmod/q3master-pr:pr-${{ gitea.event.pull_request.number }}
+            repo.s4ndmod.com/s4ndmod/q3master-pr:pr-${{ gitea.event.pull_request.number }}-${{ gitea.event.pull_request.head.sha }}
 
       # Posts (or updates, on later pushes to the same PR) a single comment
       # with the preview env URL. Uses Gitea's auto-provisioned Actions

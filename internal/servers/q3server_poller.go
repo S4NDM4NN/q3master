@@ -18,6 +18,43 @@ var (
 	pollQueueMutex sync.Mutex
 )
 
+// --- Per-IP poll pacing ---
+
+// minPollIntervalPerIP is the minimum spacing enforced between poll packets
+// sent to the same IP. Some hosts run several servers (different ports) on
+// one machine, and with 8 poll workers running concurrently those can
+// otherwise all get queued and dispatched within the same instant --
+// several simultaneous getstatus packets landing on one host looks a lot
+// like the opening burst of a UDP scan/flood, and is exactly the kind of
+// traffic a host-side firewall might start rate-limiting or blocking on
+// (see offlineRetryBackoff above for the same concern applied to a single
+// address). Staggering polls to a shared IP keeps our traffic looking like
+// ordinary, spaced-out queries instead.
+const minPollIntervalPerIP = 750 * time.Millisecond
+
+var (
+	ipPollMutex sync.Mutex
+	ipLastPoll  = make(map[string]time.Time)
+)
+
+// waitForIPSlot blocks (if needed) until at least minPollIntervalPerIP has
+// passed since the last poll dispatched to host, then reserves the slot.
+func waitForIPSlot(host string) {
+	for {
+		ipPollMutex.Lock()
+		now := time.Now()
+		last, ok := ipLastPoll[host]
+		if !ok || now.Sub(last) >= minPollIntervalPerIP {
+			ipLastPoll[host] = now
+			ipPollMutex.Unlock()
+			return
+		}
+		wait := minPollIntervalPerIP - now.Sub(last)
+		ipPollMutex.Unlock()
+		time.Sleep(wait)
+	}
+}
+
 // StartPollWorkers spins up N workers to process poll requests.
 func StartPollWorkers(n int) {
 	if n <= 0 {
@@ -77,7 +114,12 @@ func pollServers() {
 	var toPoll []*ServerEntry
 
 	for _, s := range serverList {
-		if !s.Online || now.Sub(s.LastSeen) > 2*time.Minute {
+		switch {
+		case !s.Online:
+			if now.Sub(s.LastAttempt) >= offlineRetryBackoff(s.MissedPolls) {
+				toPoll = append(toPoll, s)
+			}
+		case now.Sub(s.LastSeen) > 2*time.Minute:
 			toPoll = append(toPoll, s)
 		}
 	}
@@ -86,6 +128,37 @@ func pollServers() {
 	for _, s := range toPoll {
 		EnqueuePoll(s.Address)
 	}
+}
+
+// offlineRetryBaseBackoff/offlineRetryMaxBackoff bound how long we wait
+// between re-polls of a server that's still offline. Without this, this
+// sweep (every 15s, see StartPolling in main.go) re-queues *every* offline
+// server on *every* tick forever -- for a server down several hours that's
+// thousands of getstatus queries. getstatus is a known UDP amplification
+// vector, so a source hammering it that hard is exactly the kind of traffic
+// many RTCW/ET hosts (or an upstream firewall) rate-limit or block on sight
+// -- which can turn a transient blip into a much longer outage purely
+// because of how aggressively we were retrying it.
+const (
+	offlineRetryBaseBackoff = 15 * time.Second
+	offlineRetryMaxBackoff  = 5 * time.Minute
+)
+
+// offlineRetryBackoff grows from offlineRetryBaseBackoff up to
+// offlineRetryMaxBackoff as consecutive missed polls accumulate.
+func offlineRetryBackoff(missedPolls int) time.Duration {
+	level := missedPolls - offlineAfterMissedPolls
+	if level < 0 {
+		level = 0
+	}
+	if level > 10 { // avoid an oversized shift; well past the backoff cap anyway
+		level = 10
+	}
+	delay := offlineRetryBaseBackoff * time.Duration(int64(1)<<uint(level))
+	if delay > offlineRetryMaxBackoff {
+		delay = offlineRetryMaxBackoff
+	}
+	return delay
 }
 
 func pollServer(s *ServerEntry) {
@@ -98,6 +171,8 @@ func pollServer(s *ServerEntry) {
 	if err != nil {
 		return
 	}
+
+	waitForIPSlot(addr.IP.String())
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
