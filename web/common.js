@@ -62,12 +62,21 @@ function drawSparkline(canvas, points, opts = {}) {
     return;
   }
 
+  // The peak/current-value readouts get their own header strip above the
+  // plot instead of floating on top of it -- text drawn inside the plot
+  // area inevitably collides with the line/fill whenever a value is near
+  // the top of the chart's range, which is often (that's what "peak"
+  // means). Reserving space up front means the chart itself never has
+  // anything drawn under those labels, so there's nothing to collide with.
+  const headerH = 14;
   const xs = points.map(p => p.x), ys = points.map(p => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const maxY = Math.max(1, ...ys);
   const pad = 4;
+  const plotTop = headerH + 3;
+  const plotBottom = h - pad;
   const xScale = x => pad + (w - 2 * pad) * (maxX === minX ? 0.5 : (x - minX) / (maxX - minX));
-  const yScale = y => (h - pad) - (h - 2 * pad) * (y / maxY);
+  const yScale = y => plotBottom - (plotBottom - plotTop) * (y / maxY);
 
   const color = opts.color || '#0dcaf0';
 
@@ -85,23 +94,15 @@ function drawSparkline(canvas, points, opts = {}) {
 
     if (segment.length > 1) {
       const segMaxX = segment[segment.length - 1].x, segMinX = segment[0].x;
-      ctx.lineTo(xScale(segMaxX), h - pad);
-      ctx.lineTo(xScale(segMinX), h - pad);
+      ctx.lineTo(xScale(segMaxX), plotBottom);
+      ctx.lineTo(xScale(segMinX), plotBottom);
       ctx.closePath();
       ctx.fillStyle = color + '26';
       ctx.fill();
     }
   }
 
-  // Peak marker: a dot on the highest point. The readout showing what the
-  // peak actually *is* goes in a fixed top-left corner rather than floating
-  // next to the dot -- a floating label would land wherever the peak
-  // happens to fall in the series, which frequently collides with the
-  // top-right "current value" readout below (e.g. when the count is still
-  // climbing and the peak is also the most recent point). A fixed corner
-  // mirrors that current-value readout and never collides with it,
-  // regardless of chart size, so it works for the small card/network
-  // sparklines too, not just the roomier detail-page chart.
+  // Peak marker: a dot on the highest point.
   let peak = points[0];
   for (const p of points) if (p.y > peak.y) peak = p;
   const px = xScale(peak.x), py = yScale(peak.y);
@@ -113,24 +114,20 @@ function drawSparkline(canvas, points, opts = {}) {
   ctx.fill();
   ctx.stroke();
 
-  // opts.peakLabel adds the peak's timestamp too -- used on the roomier
-  // detail-page chart where there's room for it.
+  // Header strip: peak on the left (with timestamp too when opts.peakLabel
+  // is set -- used on the roomier detail-page chart), current value on the
+  // right.
   const peakText = opts.peakLabel
     ? `peak ${Math.round(peak.y)} · ${formatLastSeen(peak.x)}`
     : `peak ${Math.round(peak.y)}`;
-  ctx.font = '11px monospace';
-  const peakTextW = ctx.measureText(peakText).width;
-  ctx.fillStyle = '#0a0a0a';
-  ctx.fillRect(pad - 3, 1, peakTextW + 6, 14);
-  ctx.fillStyle = '#ccc';
-  ctx.textAlign = 'left';
-  ctx.fillText(peakText, pad, 12);
-
   const last = points[points.length - 1];
-  ctx.fillStyle = '#ccc';
   ctx.font = '11px monospace';
+  ctx.fillStyle = '#999';
+  ctx.textAlign = 'left';
+  ctx.fillText(peakText, pad, 11);
+  ctx.fillStyle = '#ccc';
   ctx.textAlign = 'right';
-  ctx.fillText(String(Math.round(last.y)), w - 4, 12);
+  ctx.fillText(String(Math.round(last.y)), w - pad, 11);
   ctx.textAlign = 'left';
 }
 
