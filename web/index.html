@@ -34,7 +34,11 @@
   .info-toggle:hover { color:#0dcaf0; }
   .back-link { color:#66d9ef;text-decoration:none; }
   .back-link:hover { color:#0dcaf0;text-decoration:underline; }
-  .toolbar { display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem; }
+  .toolbar { display:flex;flex-direction:column;gap:.65rem;margin-bottom:1rem; }
+  .toolbar-row { display:flex;flex-wrap:wrap;gap:.75rem;align-items:center; }
+  .toolbar-row-refine { row-gap:.4rem; }
+  .filter-label { font-size:.8rem;color:#999;white-space:nowrap; }
+  #version-filter, #mod-filter { max-width:220px;flex:1 1 160px; }
   #game-filter { flex-wrap:wrap;row-gap:.25rem; }
   .counts { opacity:.8 }
   .chart-label { display:block;font-size:.75rem;color:#aaa;margin-bottom:.2rem; }
@@ -114,37 +118,47 @@
   </div>
 
   <div class="toolbar">
-    <input type="text" id="server-filter" class="form-control bg-dark text-light border-secondary" placeholder="Filter servers... (hostname, map, mod, ip, version)" style="max-width:420px;">
-    <div class="form-check">
-      <input class="form-check-input" type="checkbox" id="showOfflineToggle">
-      <label class="form-check-label text-light" for="showOfflineToggle">Show Offline</label>
+    <div class="toolbar-row">
+      <input type="text" id="server-filter" class="form-control bg-dark text-light border-secondary" placeholder="Filter servers... (hostname, map, mod, ip, version)" style="max-width:420px;">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="showOfflineToggle">
+        <label class="form-check-label text-light" for="showOfflineToggle">Show Offline</label>
+      </div>
+      <div id="server-counts" class="fs-6 text-light-emphasis counts ms-auto"></div>
     </div>
-    <div class="btn-group" role="group" id="game-filter">
-      <input type="radio" class="btn-check" name="game" id="filter-all" value="all" autocomplete="off" checked>
-      <label class="btn btn-outline-light" for="filter-all">All</label>
 
-      <input type="radio" class="btn-check" name="game" id="filter-rtcw" value="rtcw" autocomplete="off">
-      <label class="btn btn-outline-light" for="filter-rtcw">RTCW</label>
+    <div class="toolbar-row">
+      <div class="btn-group" role="group" id="game-filter">
+        <input type="radio" class="btn-check" name="game" id="filter-all" value="all" autocomplete="off" checked>
+        <label class="btn btn-outline-light" for="filter-all">All</label>
 
-      <input type="radio" class="btn-check" name="game" id="filter-et" value="et" autocomplete="off">
-      <label class="btn btn-outline-light" for="filter-et">ET</label>
+        <input type="radio" class="btn-check" name="game" id="filter-rtcw" value="rtcw" autocomplete="off">
+        <label class="btn btn-outline-light" for="filter-rtcw">RTCW</label>
 
-      <input type="radio" class="btn-check" name="game" id="filter-q3a" value="q3a" autocomplete="off">
-      <label class="btn btn-outline-light" for="filter-q3a">Quake 3 Arena</label>
+        <input type="radio" class="btn-check" name="game" id="filter-et" value="et" autocomplete="off">
+        <label class="btn btn-outline-light" for="filter-et">ET</label>
 
-      <input type="radio" class="btn-check" name="game" id="filter-oa" value="oa" autocomplete="off">
-      <label class="btn btn-outline-light" for="filter-oa">OpenArena</label>
+        <input type="radio" class="btn-check" name="game" id="filter-q3a" value="q3a" autocomplete="off">
+        <label class="btn btn-outline-light" for="filter-q3a">Quake 3 Arena</label>
 
-      <input type="radio" class="btn-check" name="game" id="filter-unknown" value="unknown" autocomplete="off">
-      <label class="btn btn-outline-warning" for="filter-unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</label>
+        <input type="radio" class="btn-check" name="game" id="filter-oa" value="oa" autocomplete="off">
+        <label class="btn btn-outline-light" for="filter-oa">OpenArena</label>
+
+        <input type="radio" class="btn-check" name="game" id="filter-unknown" value="unknown" autocomplete="off">
+        <label class="btn btn-outline-warning" for="filter-unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</label>
+      </div>
     </div>
-    <select id="version-filter" class="form-select form-select-sm bg-dark text-light border-secondary" style="max-width:200px;">
-      <option value="all">All versions</option>
-    </select>
-    <select id="mod-filter" class="form-select form-select-sm bg-dark text-light border-secondary" style="max-width:200px;">
-      <option value="all">All mods</option>
-    </select>
-    <div id="server-counts" class="fs-6 text-light-emphasis counts ms-auto"></div>
+
+    <div class="toolbar-row toolbar-row-refine">
+      <label class="filter-label" for="version-filter">Version</label>
+      <select id="version-filter" class="form-select form-select-sm bg-dark text-light border-secondary">
+        <option value="all">All versions</option>
+      </select>
+      <label class="filter-label" for="mod-filter">Mod</label>
+      <select id="mod-filter" class="form-select form-select-sm bg-dark text-light border-secondary">
+        <option value="all">All mods</option>
+      </select>
+    </div>
   </div>
 
   
