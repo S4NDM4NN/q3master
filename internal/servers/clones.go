@@ -19,10 +19,21 @@ import (
 // several times), the group is collapsed into a single displayed entry
 // (Primary) with the rest recorded as AKA addresses on it.
 type CloneGroup struct {
-    Primary  string    `json:"primary"`
-    AKA      []string  `json:"aka"`
-    Reason   string    `json:"reason"`
-    Detected time.Time `json:"detected"`
+    Primary  string     `json:"primary"`
+    AKA      []AKAEntry `json:"aka"`
+    Reason   string     `json:"reason"`
+    Detected time.Time  `json:"detected"`
+}
+
+// AKAEntry names one address folded into a CloneGroup, with the hostname
+// text it was reporting at the moment it was folded in. Alias addresses
+// are never independently polled again afterward (see isKnownAlias), so
+// this is a one-time snapshot, not a live value -- still useful context,
+// e.g. distinguishing a region-labeled mirror ("...eu" vs "...de") of the
+// same live match from a truly anonymous duplicate port.
+type AKAEntry struct {
+    Address  string `json:"address"`
+    Hostname string `json:"hostname"`
 }
 
 var (
@@ -54,16 +65,24 @@ const matchTimeTolerance = 8 * time.Second
 // detectClones groups all known online servers by content and collapses
 // any group of 2+ matching addresses into a single CloneGroup. Two passes:
 //
-//  1. Servers with real players: exact match on hostname, map, and sorted
-//     player+bot roster. Airtight in practice -- two independent matches
-//     essentially never share the same real player names.
-//  2. Servers with nobody online: roster alone can't fingerprint these (two
-//     coincidentally-identical *empty* default-config servers would
-//     false-positive on hostname/map alone), so a match on hostname+map is
-//     only trusted if every address's Q3A-family "elapsed match time"
-//     (Score_Time, see MatchTimeSec/HasMatchTime) also stays in sync with
-//     the real time between when each was polled -- see matchTimeTolerance.
-//     ET/RTCW never report this field, so this pass only ever fires for
+//  1. Servers with at least one real (non-bot) player: match on map and
+//     sorted player+bot roster -- hostname is deliberately NOT part of the
+//     key here. A real player's chosen nickname colliding by chance across
+//     two genuinely independent servers is astronomically unlikely, so the
+//     roster alone is airtight; requiring hostname too would just let an
+//     operator dodge detection with a cosmetic hostname variation (found
+//     2026-08-13: the same live match broadcasting as "...fpsclasico.de"
+//     on one address and "...fpsclasico.eu" on another -- identical
+//     roster/scores/map, hostname the only thing different).
+//  2. All-bot or empty rosters: bot names are drawn from a small canonical
+//     default pool (Sarge, Grunt, ...), so two coincidentally-identical
+//     all-bot servers on a popular default map are a real risk -- these
+//     require an exact hostname match too, and additionally (since an
+//     empty/bot-only roster is weak evidence on its own) every address's
+//     Q3A-family "elapsed match time" (Score_Time, see
+//     MatchTimeSec/HasMatchTime) must stay in sync with the real time
+//     between when each was polled -- see matchTimeTolerance. ET/RTCW
+//     never report Score_Time, so this pass only ever fires for
 //     Q3A/OpenArena.
 //
 // Runs periodically (see StartCloneDetection); each run recomputes groups
@@ -72,17 +91,18 @@ const matchTimeTolerance = 8 * time.Second
 // across restarts/cycles.
 func detectClones() {
     type cloneKey struct {
-        hostname, mapName, roster string
+        mapName, roster string
     }
     type hostMapKey struct {
         hostname, mapName string
     }
 
     rosterGroups := make(map[cloneKey][]string)
-    emptyRosterAddrs := make(map[hostMapKey][]string)
+    botOnlyGroups := make(map[hostMapKey][]string)
     firstSeen := make(map[string]time.Time)
     lastGoodPoll := make(map[string]time.Time)
     matchTimeSec := make(map[string]int)
+    hostnameOf := make(map[string]string)
 
     serverMutex.Lock()
     for addr, s := range serverList {
@@ -90,14 +110,18 @@ func detectClones() {
             continue
         }
         firstSeen[addr] = s.FirstSeen
+        hostnameOf[addr] = s.Hostname
 
         roster := make([]string, 0, len(s.Players)+len(s.Bots))
         roster = append(roster, s.Players...)
         roster = append(roster, s.Bots...)
-        if len(roster) == 0 {
+
+        if len(s.Players) == 0 {
+            // No real (non-bot) players -- fall back to the stricter,
+            // hostname-anchored, match-time-corroborated path.
             if s.HasMatchTime {
                 hk := hostMapKey{s.Hostname, s.Map}
-                emptyRosterAddrs[hk] = append(emptyRosterAddrs[hk], addr)
+                botOnlyGroups[hk] = append(botOnlyGroups[hk], addr)
                 lastGoodPoll[addr] = s.LastGoodPoll
                 matchTimeSec[addr] = s.MatchTimeSec
             }
@@ -105,7 +129,7 @@ func detectClones() {
         }
         sort.Strings(roster)
 
-        k := cloneKey{s.Hostname, s.Map, strings.Join(roster, "\x00")}
+        k := cloneKey{s.Map, strings.Join(roster, "\x00")}
         rosterGroups[k] = append(rosterGroups[k], addr)
     }
     serverMutex.Unlock()
@@ -117,13 +141,13 @@ func detectClones() {
             continue
         }
         reason := fmt.Sprintf(
-            "Reports identical hostname %q, map %q, and player/bot roster from every address listed -- collapsed into one entry.",
-            k.hostname, k.mapName,
+            "Reports identical map %q and player/bot roster from every address listed -- collapsed into one entry.",
+            k.mapName,
         )
-        mergeGroup(addrs, firstSeen, reason)
+        mergeGroup(addrs, firstSeen, hostnameOf, reason)
     }
 
-    for hk, addrs := range emptyRosterAddrs {
+    for hk, addrs := range botOnlyGroups {
         if len(addrs) < 2 {
             continue
         }
@@ -147,10 +171,10 @@ func detectClones() {
             continue
         }
         reason := fmt.Sprintf(
-            "Reports identical hostname %q and map %q with nobody online, but its elapsed match-time clock (Score_Time) stays in sync with the real time between polls across every address listed -- collapsed into one entry.",
+            "Reports identical hostname %q and map %q with no real players online, but its elapsed match-time clock (Score_Time) stays in sync with the real time between polls across every address listed -- collapsed into one entry.",
             hk.hostname, hk.mapName,
         )
-        mergeGroup(consistent, firstSeen, reason)
+        mergeGroup(consistent, firstSeen, hostnameOf, reason)
     }
 
     cloneMutex.Unlock()
@@ -159,9 +183,11 @@ func detectClones() {
 }
 
 // mergeGroup folds addrs (2+ addresses already confirmed to be the same
-// clone) into cloneGroups, picking or reusing a stable primary. Caller
-// holds cloneMutex.
-func mergeGroup(addrs []string, firstSeen map[string]time.Time, reason string) {
+// clone) into cloneGroups, picking or reusing a stable primary, and
+// records each alias's hostname at the moment it was folded in (aliases
+// are never independently polled again afterward, so this is a one-time
+// snapshot -- see AKAEntry). Caller holds cloneMutex.
+func mergeGroup(addrs []string, firstSeen map[string]time.Time, hostnameOf map[string]string, reason string) {
     sort.Strings(addrs)
 
     primary, ok := existingPrimaryFor(addrs)
@@ -179,22 +205,22 @@ func mergeGroup(addrs []string, firstSeen map[string]time.Time, reason string) {
         group = &CloneGroup{Primary: primary}
         cloneGroups[primary] = group
     }
-    akaSet := make(map[string]bool)
-    for _, a := range group.AKA {
-        akaSet[a] = true
+    akaMap := make(map[string]AKAEntry, len(group.AKA))
+    for _, e := range group.AKA {
+        akaMap[e.Address] = e
     }
     for _, a := range addrs {
         if a == primary {
             continue
         }
-        akaSet[a] = true
+        akaMap[a] = AKAEntry{Address: a, Hostname: hostnameOf[a]}
         aliasToPrimary[a] = primary
     }
-    aka := make([]string, 0, len(akaSet))
-    for a := range akaSet {
-        aka = append(aka, a)
+    aka := make([]AKAEntry, 0, len(akaMap))
+    for _, e := range akaMap {
+        aka = append(aka, e)
     }
-    sort.Strings(aka)
+    sort.Slice(aka, func(i, j int) bool { return aka[i].Address < aka[j].Address })
     group.AKA = aka
     group.Reason = reason
     group.Detected = time.Now()
@@ -230,7 +256,7 @@ func applyCloneGroups() {
             entry.AlsoKnownAs = group.AKA
         }
         for _, alias := range group.AKA {
-            delete(serverList, alias)
+            delete(serverList, alias.Address)
         }
     }
 }
@@ -295,7 +321,7 @@ func LoadCloneGroups(path string) error {
     for _, g := range loaded {
         cloneGroups[g.Primary] = g
         for _, a := range g.AKA {
-            aliasToPrimary[a] = g.Primary
+            aliasToPrimary[a.Address] = g.Primary
         }
     }
     cloneMutex.Unlock()

@@ -49,13 +49,14 @@ type ServerEntry struct {
     // (or in addition to) being found via discovery.
     Sources map[string]time.Time `json:"sources"`
     // AlsoKnownAs lists other addresses detected (see clones.go) reporting
-    // identical hostname/map/player content to this one -- almost
-    // certainly the same physical server broadcasting under multiple
-    // ports/IPs. Those addresses are collapsed out of the main list (see
+    // identical map/player content to this one -- almost certainly the
+    // same physical server broadcasting under multiple ports/IPs, possibly
+    // under different hostnames too (e.g. region-labeled mirrors of one
+    // live match). Those addresses are collapsed out of the main list (see
     // detectClones) and folded into this field on the one entry kept, so
     // the server is shown once with an honest "also known as" note instead
     // of inflating the list N times.
-    AlsoKnownAs []string `json:"also_known_as,omitempty"`
+    AlsoKnownAs []AKAEntry `json:"also_known_as,omitempty"`
     // MatchTimeSec/HasMatchTime capture the Q3A-family "Score_Time" field
     // (elapsed seconds in the current match) as of LastGoodPoll. Only
     // baseq3-derived mods (Q3A, OpenArena) send this -- ET/RTCW don't --

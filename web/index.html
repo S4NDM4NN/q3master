@@ -421,7 +421,7 @@
                     <div><span class="info-label">Missed Polls</span><span style="color:${(server.missed_polls||0)>0?'#f0ad4e':'inherit'}">${server.missed_polls??0}</span></div>
                     <div><span class="info-label">Learned via</span>${formatSources(server.sources)}</div>
                     ${server.also_known_as && server.also_known_as.length ? `
-                    <div><span class="info-label">Also broadcasting as</span>${formatAlsoKnownAs(server.also_known_as)}</div>` : ``}
+                    <div style="grid-column:1/-1;"><span class="info-label">Also broadcasting as</span>${formatAlsoKnownAs(server.also_known_as)}</div>` : ``}
                   </div>
                   <div class="mt-3">
                     <span class="chart-label">Player history (7d)</span>

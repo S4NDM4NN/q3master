@@ -362,13 +362,20 @@ function formatSources(sources) {
 }
 
 // Lists other addresses (see ServerEntry.AlsoKnownAs) detected reporting
-// identical hostname/map/player content to this server -- almost certainly
-// the same physical server broadcasting under multiple ports/IPs. Shown as
-// small pill badges, same visual language as formatSources, so it reads as
+// identical map/player content to this server -- almost certainly the same
+// physical server broadcasting under multiple ports/IPs, sometimes under a
+// different hostname too (e.g. region-labeled mirrors of one live match).
+// Each entry is {address, hostname} -- hostname is a one-time snapshot from
+// when it was folded in (alias addresses aren't polled again afterward), so
+// it's shown alongside the address rather than replacing it. Shown as small
+// pill badges, same visual language as formatSources, so it reads as
 // "here's the honest picture" rather than a callout.
 function formatAlsoKnownAs(aka) {
   if (!aka || aka.length === 0) return '';
-  return aka.map(addr => `<span class="source-badge">${addr}</span>`).join('');
+  return aka.map(e => {
+    const name = e.hostname ? parseNameColors(e.hostname) : '';
+    return `<span class="source-badge">${e.address}${name ? ` <span class="text-light-emphasis">(${name})</span>` : ''}</span>`;
+  }).join('');
 }
 
 function formatLastSeen(ts) {
