@@ -56,6 +56,14 @@ type ServerEntry struct {
     // the server is shown once with an honest "also known as" note instead
     // of inflating the list N times.
     AlsoKnownAs []string `json:"also_known_as,omitempty"`
+    // MatchTimeSec/HasMatchTime capture the Q3A-family "Score_Time" field
+    // (elapsed seconds in the current match) as of LastGoodPoll. Only
+    // baseq3-derived mods (Q3A, OpenArena) send this -- ET/RTCW don't --
+    // HasMatchTime distinguishes "server doesn't report this" from a
+    // genuine 0:00. Used by clones.go to corroborate clone detection for
+    // servers with no players to fingerprint by roster.
+    MatchTimeSec int  `json:"match_time_sec,omitempty"`
+    HasMatchTime bool `json:"has_match_time,omitempty"`
 }
 
 // in-memory store and configuration
