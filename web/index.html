@@ -615,13 +615,13 @@
                       <span class="badge bg-dark border border-secondary">${getVersionLabel(server)}</span>
                     </div>
                     <div class="text-end flex-shrink-0">
-                      <span class="player-count">
+                      <span class="player-count d-none d-md-inline">
                         ${(server.player_count??0)}/${server.max_players??0} players
                         ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
                       </span>
-                      <span class="server-status ms-2" title="${label}">
+                      <span class="server-status ms-md-2" title="${label} — last seen: ${formatLastSeen(server.last_seen)}">
                         <span class="status-dot ${dot}"></span>
-                        ${hb ? '<i class="bi bi-broadcast heartbeat-icon" title="Direct heartbeat seen recently"></i>' : ''}
+                        ${hb ? `<i class="bi bi-broadcast heartbeat-icon" title="Last heartbeat: ${formatLastSeen(server.last_heartbeat)}"></i>` : ''}
                       </span>
                     </div>
                   </div>
@@ -638,8 +638,12 @@
                     <span><span class="text-light-emphasis">Map:</span> <span class="text-warning">${server.map||'unknown'}</span></span>
                   </div>
 
-                  <div class="text-end mt-2">
-                    <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page" class="me-3"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
+                  <div class="text-end mt-2 d-flex align-items-center justify-content-end gap-3">
+                    <span class="player-count d-md-none">
+                      ${(server.player_count??0)}/${server.max_players??0} players
+                      ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
+                    </span>
+                    <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
                     <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
                   </div>
                 </div>
