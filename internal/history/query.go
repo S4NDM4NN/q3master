@@ -25,6 +25,17 @@ type NetworkPoint struct {
 	OnlineServerCount float64   `json:"online_server_count"`
 }
 
+// MasterPoint is a single history sample of the real (id Software) master
+// server's reachability, at whatever resolution (raw/hourly/daily) it was
+// served from. UptimePct is 0-100: for raw points it's simply 0 or 100
+// (down/up for that single check); for hourly/daily points it's the
+// fraction of checks in that bucket that succeeded.
+type MasterPoint struct {
+	Ts          time.Time `json:"ts"`
+	UptimePct   float64   `json:"uptime_pct"`
+	SampleCount int       `json:"sample_count"`
+}
+
 // ParseRange converts a range query param ("7d", "30d", "all") into a cutoff
 // time. Unrecognized values fall back to "7d".
 func ParseRange(rangeParam string) time.Time {
@@ -149,6 +160,50 @@ func GetNetworkHistory(ctx context.Context, protocol string, since time.Time) ([
 
 	sort.Slice(points, func(i, j int) bool { return points[i].Ts.Before(points[j].Ts) })
 	return points, nil
+}
+
+// GetMasterDailyUptime returns one uptime point per calendar day for the
+// trailing `days` days (including today, which keeps updating as the day's
+// rollup re-runs), always at daily granularity. Unlike GetServerHistory/
+// GetNetworkHistory's tiered raw/hourly/daily merge (built for a continuous
+// line chart that wants finer resolution near "now"), this powers a
+// status-page-style day-by-day uptime bar, where every bar must represent
+// exactly one calendar day regardless of how recent it is.
+func GetMasterDailyUptime(ctx context.Context, days int) ([]MasterPoint, error) {
+	if !enabled {
+		return []MasterPoint{}, nil
+	}
+	if days <= 0 {
+		days = 90
+	}
+
+	now := time.Now().UTC()
+	from := now.AddDate(0, 0, -days)
+
+	docs, err := queryMasterDaily(ctx, from, now)
+	if err != nil {
+		return nil, err
+	}
+	points := make([]MasterPoint, 0, len(docs))
+	for _, d := range docs {
+		points = append(points, MasterPoint{Ts: d.DayTs, UptimePct: d.UptimePct, SampleCount: d.SampleCount})
+	}
+	return points, nil
+}
+
+func queryMasterDaily(ctx context.Context, from, to time.Time) ([]masterDailyDoc, error) {
+	filter := bson.D{
+		{Key: "day_ts", Value: bson.D{{Key: "$gte", Value: from}, {Key: "$lte", Value: to}}},
+	}
+	cur, err := masterDailyColl.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "day_ts", Value: 1}}))
+	if err != nil {
+		return nil, err
+	}
+	var docs []masterDailyDoc
+	if err := cur.All(ctx, &docs); err != nil {
+		return nil, err
+	}
+	return docs, nil
 }
 
 func queryRaw(ctx context.Context, address string, from, to time.Time) ([]sampleDoc, error) {
