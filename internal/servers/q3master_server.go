@@ -136,7 +136,7 @@ func minf(a, b float64) float64 { if a < b { return a } ; return b }
 
 func handleHeartbeat(raddr *net.UDPAddr, line string) {
     addr := net.JoinHostPort(raddr.IP.String(), strconv.Itoa(raddr.Port))
-    if checkIgnored(addr) {
+    if checkIgnored(addr) || isKnownAlias(addr) {
         return
     }
     serverMutex.Lock()

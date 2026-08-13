@@ -24,8 +24,6 @@
   th, td { text-align:left;padding:.4rem .6rem;border-bottom:1px solid #2a2a2a;vertical-align:top;color:#ddd; }
   th { color:#aaa;font-weight:normal;font-size:.75rem;text-transform:uppercase;letter-spacing:.03em; }
   #ignored-container:empty::after { content:"No hosts are currently ignored."; color:#888; font-size:.9rem; }
-  .badge-auto { background:#0dcaf022;border:1px solid #0dcaf0;color:#0dcaf0;font-size:.7rem;padding:.15rem .5rem;border-radius:4px;margin-left:.5rem;vertical-align:middle; }
-  .badge-confirmed { background:#f0ad4e22;border:1px solid #f0ad4e;color:#f0ad4e;font-size:.7rem;padding:.15rem .5rem;border-radius:4px;margin-left:.5rem;vertical-align:middle; }
 </style>
 </head>
 <body>
@@ -36,12 +34,13 @@
   <h1 class="mb-3">Ignored Hosts</h1>
 
   <div class="callout callout-warn">
-    Manipulating your listing on this master &mdash; registering the same server under many fake
-    ports/addresses to inflate your apparent presence, spoofing player counts, or similar &mdash; gets an
-    IP <strong>permanently ignored</strong>: every port on it is excluded from the server list and
-    network totals, and it's named here. This is checked automatically &mdash; the tool watches for
-    servers reporting identical hostname, map, and player data under different addresses and blocks
-    them on its own, no manual reporting required.
+    This is a short, manually-curated list for hosts doing something worse than ordinary
+    list-padding &mdash; those get a full, permanent block: every port on the IP is excluded from
+    the server list and network totals, and it's named here. Simply registering the same server
+    under several ports or addresses to inflate your apparent presence isn't treated as a ban
+    &mdash; the list <a href="index.html" class="back-link">detects that automatically</a> and just
+    shows the server once, with the other addresses it's also broadcasting from noted as
+    "also broadcasting as" on its entry.
   </div>
 
   <div id="ignored-container"></div>
@@ -54,12 +53,9 @@
           const rows = (h.addresses || []).map(a =>
             `<tr><td><code>${a.address}</code></td><td>${formatLastSeen(a.last_seen)}</td></tr>`
           ).join('');
-          const badge = h.auto_detected
-            ? `<span class="badge-auto">AUTO-DETECTED</span>`
-            : `<span class="badge-confirmed">CONFIRMED</span>`;
           container.append(`
             <div class="card">
-              <div class="card-header"><code>${h.ip}</code> <span class="text-light-emphasis">(all ports)</span>${badge}</div>
+              <div class="card-header"><code>${h.ip}</code> <span class="text-light-emphasis">(all ports)</span></div>
               <div class="card-body">
                 <p class="server-status">${h.reason}</p>
                 ${rows ? `

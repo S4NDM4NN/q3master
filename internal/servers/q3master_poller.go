@@ -177,7 +177,7 @@ func queryMaster(host, label, proto string) bool {
 
             addr := fmt.Sprintf("%s:%d", ip.String(), port)
 
-            if checkIgnored(addr) {
+            if checkIgnored(addr) || isKnownAlias(addr) {
                 continue
             }
 

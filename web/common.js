@@ -361,6 +361,16 @@ function formatSources(sources) {
   }).join('');
 }
 
+// Lists other addresses (see ServerEntry.AlsoKnownAs) detected reporting
+// identical hostname/map/player content to this server -- almost certainly
+// the same physical server broadcasting under multiple ports/IPs. Shown as
+// small pill badges, same visual language as formatSources, so it reads as
+// "here's the honest picture" rather than a callout.
+function formatAlsoKnownAs(aka) {
+  if (!aka || aka.length === 0) return '';
+  return aka.map(addr => `<span class="source-badge">${addr}</span>`).join('');
+}
+
 function formatLastSeen(ts) {
   const d = new Date(ts); if (isNaN(d)) return '—';
   return d.toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' });

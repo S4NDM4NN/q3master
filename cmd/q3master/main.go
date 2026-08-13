@@ -21,13 +21,13 @@ func main() {
     if seedURL == "" {
         seedURL = "https://list.s4ndmod.com/api/servers"
     }
-    // Auto-detected list-manipulation blocks (see servers.StartAbuseDetection)
-    // live alongside the main state file but are persisted separately, so a
-    // format change in one can't break loading the other.
-    autoIgnoredFile := filepath.Join(filepath.Dir(stateFile), "auto_ignored.json")
+    // Detected clone groups (see servers.StartCloneDetection) live alongside
+    // the main state file but are persisted separately, so a format change
+    // in one can't break loading the other.
+    cloneGroupsFile := filepath.Join(filepath.Dir(stateFile), "clone_groups.json")
 
-    if err := servers.LoadAutoIgnored(autoIgnoredFile); err != nil {
-        fmt.Printf("failed to load auto-ignored state: %v\n", err)
+    if err := servers.LoadCloneGroups(cloneGroupsFile); err != nil {
+        fmt.Printf("failed to load clone-group state: %v\n", err)
     }
     if err := servers.LoadOrSeed(stateFile, seedURL); err != nil {
         fmt.Printf("failed to load/seed server state: %v\n", err)
@@ -47,7 +47,7 @@ func main() {
     servers.StartJanitor()
     servers.StartAutosave(stateFile, 2*time.Minute)
     servers.StartNetworkSampling(time.Minute, history.RecordNetworkSample)
-    servers.StartAbuseDetection(5*time.Minute, autoIgnoredFile)
+    servers.StartCloneDetection(5*time.Minute, cloneGroupsFile)
     history.StartRollup(15 * time.Minute)
     // start UDP master server (getservers + heartbeat)
     servers.StartMasterUDP(":27950")

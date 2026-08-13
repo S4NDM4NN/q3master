@@ -84,6 +84,7 @@
           <div><span class="info-label">Missed Polls</span><span id="d-missed-polls"></span></div>
           <div><span class="info-label">First Seen</span><span id="d-first-seen"></span></div>
           <div><span class="info-label">Learned via</span><span id="d-sources"></span></div>
+          <div id="d-aka-row" style="display:none;"><span class="info-label">Also broadcasting as</span><span id="d-aka"></span></div>
         </div>
 
         <div class="mt-4">
@@ -159,6 +160,12 @@
       $('#d-missed-polls').css('color', (server.missed_polls||0) > 0 ? '#f0ad4e' : 'inherit').text(server.missed_polls ?? 0);
       $('#d-first-seen').text(formatFullTime(server.first_seen));
       $('#d-sources').html(formatSources(server.sources));
+      if (server.also_known_as && server.also_known_as.length) {
+        $('#d-aka').html(formatAlsoKnownAs(server.also_known_as));
+        $('#d-aka-row').show();
+      } else {
+        $('#d-aka-row').hide();
+      }
 
       const realPlayers = (server.players||[]).map(p=>`<div class="q3name">${parseNameColors(p)}</div>`).join('');
       $('#d-players').html(realPlayers || '<em>No players online</em>');

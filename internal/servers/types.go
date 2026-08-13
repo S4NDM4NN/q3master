@@ -48,6 +48,14 @@ type ServerEntry struct {
     // when the server heartbeats straight to our own UDP master instead of
     // (or in addition to) being found via discovery.
     Sources map[string]time.Time `json:"sources"`
+    // AlsoKnownAs lists other addresses detected (see clones.go) reporting
+    // identical hostname/map/player content to this one -- almost
+    // certainly the same physical server broadcasting under multiple
+    // ports/IPs. Those addresses are collapsed out of the main list (see
+    // detectClones) and folded into this field on the one entry kept, so
+    // the server is shown once with an honest "also known as" note instead
+    // of inflating the list N times.
+    AlsoKnownAs []string `json:"also_known_as,omitempty"`
 }
 
 // in-memory store and configuration
@@ -128,18 +136,17 @@ type IgnoredHost struct {
 // can enter serverList -- discovery (queryMaster) and direct heartbeats
 // (handleHeartbeat) -- so a blocked host's entries never appear on the list
 // or count toward totals, regardless of which port or discovery path they
-// come in on.
+// come in on. This is a manual, curated list reserved for hosts doing
+// something actually malicious (not just inflating their listing count --
+// see clones.go for that, which collapses rather than bans). Empty by
+// default; add entries here only for confirmed bad actors worse than
+// ordinary list-padding.
 //
-// 155.138.197.166 was added 2026-08-13: confirmed via direct getstatus
-// polling of every port it registered on master.ioquake3.org and
-// master.maverickservers.com (27960, 27962, 2020-2025 -- 8 ports total)
-// that all eight return byte-identical hostname ("RETRO|FFA"), map
-// (q3utc14), maxclients (32), and player list -- one real server heartbeat-
-// registering itself under 8 fake ports to occupy 8x its actual footprint
-// on the list, not 8 legitimately separate instances.
-var ignoredHosts = []IgnoredHost{
-    {IP: "155.138.197.166", Reason: "Registered 8 servers (ports 27960, 27962, 2020-2025) with byte-identical hostname, map, and player data -- one real server padded to look like 8 on the list."},
-}
+// 155.138.197.166 (RETRO|FFA, confirmed 2026-08-13 padding itself across 8
+// ports) was removed from here 2026-08-13 in favor of the automatic
+// clone-collapsing in clones.go, which now handles this class of case
+// without a manual entry or public ban.
+var ignoredHosts = []IgnoredHost{}
 
 var (
     ignoredSightings      = make(map[string]time.Time) // address -> last time it tried to register while blocked
@@ -147,18 +154,14 @@ var (
 )
 
 // ignoredReasonForIP returns the block reason if ip (no port) matches a
-// blocked host -- curated (ignoredHosts) or auto-detected (see abuse.go) --
-// and whether it matched at all.
+// curated blocked host, and whether it matched at all.
 func ignoredReasonForIP(ip string) (string, bool) {
     for _, h := range ignoredHosts {
         if h.IP == ip {
             return h.Reason, true
         }
     }
-    autoIgnoredMutex.Lock()
-    reason, ok := autoIgnored[ip]
-    autoIgnoredMutex.Unlock()
-    return reason, ok
+    return "", false
 }
 
 // checkIgnored splits addr ("ip:port") and reports whether its IP is
@@ -180,10 +183,9 @@ func checkIgnored(addr string) bool {
 // IgnoredHostView is one blocked IP plus the specific addresses observed
 // trying to register under it, for the "ignored" page.
 type IgnoredHostView struct {
-    IP           string            `json:"ip"`
-    Reason       string            `json:"reason"`
-    AutoDetected bool              `json:"auto_detected"`
-    Addresses    []IgnoredSighting `json:"addresses"`
+    IP        string            `json:"ip"`
+    Reason    string            `json:"reason"`
+    Addresses []IgnoredSighting `json:"addresses"`
 }
 
 // IgnoredSighting is one observed address (a specific port) on a blocked
@@ -193,46 +195,21 @@ type IgnoredSighting struct {
     LastSeen time.Time `json:"last_seen"`
 }
 
-// GetIgnoredHosts returns every blocked IP -- curated first (stable order),
-// then auto-detected (sorted by IP for determinism) -- with the specific
+// GetIgnoredHosts returns every curated blocked IP, with the specific
 // addresses seen trying to register under each, most-recently-seen first.
 func GetIgnoredHosts() []IgnoredHostView {
-    type entry struct {
-        ip, reason string
-        auto       bool
-    }
-    var all []entry
-    seen := make(map[string]bool)
-    for _, h := range ignoredHosts {
-        all = append(all, entry{h.IP, h.Reason, false})
-        seen[h.IP] = true
-    }
-
-    autoIgnoredMutex.Lock()
-    autoIPs := make([]string, 0, len(autoIgnored))
-    for ip := range autoIgnored {
-        if !seen[ip] {
-            autoIPs = append(autoIPs, ip)
-        }
-    }
-    sort.Strings(autoIPs)
-    for _, ip := range autoIPs {
-        all = append(all, entry{ip, autoIgnored[ip], true})
-    }
-    autoIgnoredMutex.Unlock()
-
     ignoredSightingsMutex.Lock()
     defer ignoredSightingsMutex.Unlock()
 
-    out := make([]IgnoredHostView, 0, len(all))
-    for _, e := range all {
-        view := IgnoredHostView{IP: e.ip, Reason: e.reason, AutoDetected: e.auto, Addresses: []IgnoredSighting{}}
+    out := make([]IgnoredHostView, 0, len(ignoredHosts))
+    for _, h := range ignoredHosts {
+        view := IgnoredHostView{IP: h.IP, Reason: h.Reason, Addresses: []IgnoredSighting{}}
         for addr, ts := range ignoredSightings {
             ip := addr
             if idx := strings.LastIndex(addr, ":"); idx != -1 {
                 ip = addr[:idx]
             }
-            if ip == e.ip {
+            if ip == h.IP {
                 view.Addresses = append(view.Addresses, IgnoredSighting{Address: addr, LastSeen: ts})
             }
         }
