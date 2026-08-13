@@ -34,6 +34,9 @@
   .info-toggle:hover { color:#0dcaf0; }
   .back-link { color:#66d9ef;text-decoration:none; }
   .back-link:hover { color:#0dcaf0;text-decoration:underline; }
+  .icon-link-group { display:flex;gap:.9rem;flex-shrink:0;margin-top:.3rem; }
+  .icon-link { color:#999;font-size:1.35rem;transition:color .2s ease; }
+  .icon-link:hover { color:#66d9ef; }
   .toolbar { display:flex;flex-direction:column;gap:.65rem;margin-bottom:1rem; }
   .toolbar-row { display:flex;flex-wrap:wrap;gap:.75rem;align-items:center; }
   .toolbar-row-refine { row-gap:.4rem; }
@@ -69,9 +72,15 @@
 </style>
 </head>
 <body>
-  <h1 class="mb-3">
-    RTCW / ET / Q3 Server List
-  </h1>
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <h1 class="mb-0">
+      RTCW / ET / Q3 Server List
+    </h1>
+    <div class="icon-link-group">
+      <a href="https://github.com/S4NDM4NN/q3master" class="icon-link" target="_blank" rel="noopener" title="Run your own — source on GitHub"><i class="bi bi-github"></i></a>
+      <a href="https://www.facebook.com/S4NDMoD/" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Facebook"><i class="bi bi-facebook"></i></a>
+    </div>
+  </div>
 
   <div class="mb-3 server-status">
     <a href="masters.html" class="back-link">Master server status</a>
@@ -79,10 +88,6 @@
     <a href="add-master.html" class="back-link">Add master servers to your own server</a>
     &middot;
     <a href="fix-ingame-browser.html" class="back-link">In-game browser empty? Fix it</a>
-    &middot;
-    <a href="https://github.com/S4NDM4NN/q3master" class="back-link" target="_blank" rel="noopener">Run your own &mdash; source on GitHub</a>
-    &middot;
-    <a href="https://www.facebook.com/S4NDMoD/" class="back-link" target="_blank" rel="noopener">S4NDMoD on Facebook</a>
     &middot;
     <a href="contact.html" class="back-link">Contact</a>
   </div>
