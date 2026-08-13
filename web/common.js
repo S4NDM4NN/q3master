@@ -341,20 +341,20 @@ function computeFilterOptions(data, game, keyFn, labelFn) {
     .sort((a, b) => b.count - a.count);
 }
 
-// Lists sources (master labels, or "Direct heartbeat") a server has been
-// reported by, as small pill badges (most recently updated first) rather
-// than a flat comma string, so more-than-one source reads as an actual
-// list. "Direct heartbeat" -- the server heartbeating straight to our own
-// UDP master instead of/alongside being found via discovery -- gets its
-// own highlighted style and icon so it stands out from "found via
-// querying master X" rather than blending into the list. sources is
-// ServerEntry.sources: {label: ISO timestamp}.
+// Lists sources (master labels) a server has been reported by, as small
+// pill badges (most recently updated first) rather than a flat comma
+// string, so more-than-one source reads as an actual list. The
+// "wolfmaster.s4ndmod.com (direct heartbeat)" source -- the server
+// heartbeating straight to our own UDP master instead of/alongside being
+// found via discovery -- gets its own highlighted style and icon so it
+// stands out from "found via querying master X" rather than blending into
+// the list. sources is ServerEntry.sources: {label: ISO timestamp}.
 function formatSources(sources) {
   const entries = Object.entries(sources || {});
   if (entries.length === 0) return '<em>unknown</em>';
   entries.sort((a, b) => new Date(b[1]) - new Date(a[1]));
   return entries.map(([label, ts]) => {
-    const isHeartbeat = label === 'Direct heartbeat';
+    const isHeartbeat = label.includes('direct heartbeat');
     const cls = 'source-badge' + (isHeartbeat ? ' source-badge-heartbeat' : '');
     const icon = isHeartbeat ? '<i class="bi bi-broadcast me-1"></i>' : '';
     return `<span class="${cls}" title="last seen: ${formatLastSeen(ts)}">${icon}${label}</span>`;
