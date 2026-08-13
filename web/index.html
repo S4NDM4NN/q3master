@@ -618,9 +618,9 @@
                         <i class="bi bi-clipboard clipboard-icon" data-ip="${server.address}" title="Copy to clipboard"></i>
                       </span>
                     </div>
-                    <div class="server-status flex-shrink-0">
-                      <span class="status-dot ${dot}"></span>${label}
-                      ${hb ? '<i class="bi bi-broadcast heartbeat-icon ms-1" title="Direct heartbeat seen recently"></i>' : ''}
+                    <div class="server-status flex-shrink-0" title="${label}">
+                      <span class="status-dot ${dot}"></span>
+                      ${hb ? '<i class="bi bi-broadcast heartbeat-icon" title="Direct heartbeat seen recently"></i>' : ''}
                     </div>
                   </div>
 
@@ -636,9 +636,6 @@
                       ${(server.player_count??0)}/${server.max_players??0} players
                       ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
                     </div>
-                    <div class="text-end" style="font-size:.85rem;color:${server.online?'#ccc':'#f0ad4e'};">
-                      Last seen: ${formatLastSeen(server.last_seen)}
-                    </div>
                     <div class="text-end mt-2">
                       <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page" class="me-3"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
                       <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
@@ -648,6 +645,7 @@
 
                 <div id="${collapseId}" class="collapse card-body">
                   <div class="info-grid">
+                    <div><span class="info-label">Refreshed</span><span style="color:${server.online?'inherit':'#f0ad4e'}">${formatLastSeen(server.last_seen)}</span></div>
                     <div><span class="info-label">Gametype</span>${server.gametype||'<em>unknown</em>'}</div>
                     <div><span class="info-label">Version</span>${server.version||'<em>unknown</em>'}</div>
                     <div><span class="info-label">Missed Polls</span><span style="color:${(server.missed_polls||0)>0?'#f0ad4e':'inherit'}">${server.missed_polls??0}</span></div>
