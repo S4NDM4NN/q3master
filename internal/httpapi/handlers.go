@@ -130,3 +130,10 @@ func ServeMasterDailyUptimeAPI(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(points)
 }
 
+// ServeIgnoredAPI responds with every blocked IP (see servers.ignoredHosts)
+// and the specific addresses observed trying to register under it.
+func ServeIgnoredAPI(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(servers.GetIgnoredHosts())
+}
+

@@ -177,6 +177,10 @@ func queryMaster(host, label, proto string) bool {
 
             addr := fmt.Sprintf("%s:%d", ip.String(), port)
 
+            if checkIgnored(addr) {
+                continue
+            }
+
             serverMutex.Lock()
             entry, exists := serverList[addr]
             if !exists {

@@ -4,6 +4,7 @@ import (
     "fmt"
     "net/http"
     "os"
+    "path/filepath"
     "time"
 
     "q3master/internal/history"
@@ -20,9 +21,18 @@ func main() {
     if seedURL == "" {
         seedURL = "https://list.s4ndmod.com/api/servers"
     }
+    // Auto-detected list-manipulation blocks (see servers.StartAbuseDetection)
+    // live alongside the main state file but are persisted separately, so a
+    // format change in one can't break loading the other.
+    autoIgnoredFile := filepath.Join(filepath.Dir(stateFile), "auto_ignored.json")
+
+    if err := servers.LoadAutoIgnored(autoIgnoredFile); err != nil {
+        fmt.Printf("failed to load auto-ignored state: %v\n", err)
+    }
     if err := servers.LoadOrSeed(stateFile, seedURL); err != nil {
         fmt.Printf("failed to load/seed server state: %v\n", err)
     }
+    servers.PurgeIgnored()
 
     mongoURI := os.Getenv("MONGO_URI")
     mongoDB := os.Getenv("MONGO_DB")
@@ -37,6 +47,7 @@ func main() {
     servers.StartJanitor()
     servers.StartAutosave(stateFile, 2*time.Minute)
     servers.StartNetworkSampling(time.Minute, history.RecordNetworkSample)
+    servers.StartAbuseDetection(5*time.Minute, autoIgnoredFile)
     history.StartRollup(15 * time.Minute)
     // start UDP master server (getservers + heartbeat)
     servers.StartMasterUDP(":27950")
@@ -49,6 +60,7 @@ func main() {
     http.HandleFunc("/api/history", httpapi.WithCORS(httpapi.ServeHistoryAPI))
     http.HandleFunc("/api/history/network", httpapi.WithCORS(httpapi.ServeNetworkHistoryAPI))
     http.HandleFunc("/api/history/master/daily", httpapi.WithCORS(httpapi.ServeMasterDailyUptimeAPI))
+    http.HandleFunc("/api/ignored", httpapi.WithCORS(httpapi.ServeIgnoredAPI))
     http.Handle("/", http.FileServer(http.Dir("web")))
 
     port := os.Getenv("PORT")

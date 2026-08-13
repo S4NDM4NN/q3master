@@ -1,6 +1,8 @@
 package servers
 
 import (
+    "sort"
+    "strings"
     "sync"
     "time"
 )
@@ -56,8 +58,7 @@ var (
     // protocols are queried during discovery (getservers <proto>) against
     // every known master. "68" (Quake 3 Arena retail) and "71" (OpenArena)
     // were added 2026-08-13 after confirming real, sizeable populations on
-    // dpmaster.deathmask.net (162 and 89 servers respectively) -- q3server_poller's
-    // getstatus polling and the network/history/master-list machinery are
+    // dpmaster.deathmask.net -- q3server_poller's
     // already protocol-agnostic (they group by whatever ServerEntry.Protocol
     // value comes back), so adding a protocol here is enough to pick up a
     // new game end-to-end. "82" was added the same day: polling a few of its
@@ -69,8 +70,8 @@ var (
     // "Unknown" -- confirmed via ~/s4ndmod26/iortcw/code/qcommon/qcommon.h's
     // PROTOCOL_VERSION #define: iortcw bumped RTCW's protocol to 61 (one
     // above stock 1.4's 60), still RTCW under the hood. Skipped: protocol 67
-    // (Q3A 1.31, only 2 servers) and 43 (unidentified, couldn't confirm
-    // which game).
+    // (Q3A 1.31, negligible population) and 43 (unidentified, couldn't
+    // confirm which game).
     protocols  = []string{"57", "60", "61", "84", "82", "68", "71"}
     masterHost = "wolfmaster.idsoftware.com:27950"
 )
@@ -94,16 +95,15 @@ type MasterHostInfo struct {
 // covering them), etmaster.net (an explicit replacement for the official
 // ET master), and dpmaster.deathmask.net (a long-running generic idTech3
 // master, also used by many RTCW servers). Confirmed 2026-08-13: wolfmaster
-// returned zero servers across all three protocols while etmaster.net
-// alone returned ~149 ET servers, dpmaster ~57 RTCW 1.4 servers, and
-// master.iortcw.org ~13 RTCW 1.4 + 1 RTCW 1.0 -- querying only the official
-// master was silently missing most of the active server population.
-// Three Quake 3 Arena-specific community masters were added 2026-08-13
-// alongside Q3A/OpenArena discovery itself: master.ioquake3.org (the
-// ioquake3 project's own master, by far the largest single source found --
-// 840 servers on protocol 68 alone, more than 5x what dpmaster had),
-// master.maverickservers.com (383), and master0.excessiveplus.net (193).
-// Some overlap with dpmaster's own Q3A population is expected and handled
+// returned zero servers across all three protocols while etmaster.net,
+// dpmaster, and master.iortcw.org each returned meaningful populations --
+// querying only the official master was silently missing most of the
+// active server population. Three Quake 3 Arena-specific community masters
+// were added 2026-08-13 alongside Q3A/OpenArena discovery itself:
+// master.ioquake3.org (the ioquake3 project's own master, by far the
+// largest single source found), master.maverickservers.com, and
+// master0.excessiveplus.net. Some overlap with dpmaster's own Q3A
+// population is expected and handled
 // the same way as everywhere else: serverList is keyed by address, so
 // duplicates across masters just collapse.
 var knownMasters = []MasterHostInfo{
@@ -114,4 +114,147 @@ var knownMasters = []MasterHostInfo{
     {Host: "master.ioquake3.org:27950", Label: "master.ioquake3.org (ioquake3 project)"},
     {Host: "master.maverickservers.com:27950", Label: "master.maverickservers.com (community)"},
     {Host: "master0.excessiveplus.net:27950", Label: "master0.excessiveplus.net (community)"},
+}
+
+// IgnoredHost is a manually curated block on an entire IP (every port on
+// it), for hosts caught manipulating the list rather than just being a
+// normal, honestly-reported server.
+type IgnoredHost struct {
+    IP     string `json:"ip"`
+    Reason string `json:"reason"`
+}
+
+// ignoredHosts is checked by IP (port-independent) at every point a server
+// can enter serverList -- discovery (queryMaster) and direct heartbeats
+// (handleHeartbeat) -- so a blocked host's entries never appear on the list
+// or count toward totals, regardless of which port or discovery path they
+// come in on.
+//
+// 155.138.197.166 was added 2026-08-13: confirmed via direct getstatus
+// polling of every port it registered on master.ioquake3.org and
+// master.maverickservers.com (27960, 27962, 2020-2025 -- 8 ports total)
+// that all eight return byte-identical hostname ("RETRO|FFA"), map
+// (q3utc14), maxclients (32), and player list -- one real server heartbeat-
+// registering itself under 8 fake ports to occupy 8x its actual footprint
+// on the list, not 8 legitimately separate instances.
+var ignoredHosts = []IgnoredHost{
+    {IP: "155.138.197.166", Reason: "Registered 8 servers (ports 27960, 27962, 2020-2025) with byte-identical hostname, map, and player data -- one real server padded to look like 8 on the list."},
+}
+
+var (
+    ignoredSightings      = make(map[string]time.Time) // address -> last time it tried to register while blocked
+    ignoredSightingsMutex sync.Mutex
+)
+
+// ignoredReasonForIP returns the block reason if ip (no port) matches a
+// blocked host -- curated (ignoredHosts) or auto-detected (see abuse.go) --
+// and whether it matched at all.
+func ignoredReasonForIP(ip string) (string, bool) {
+    for _, h := range ignoredHosts {
+        if h.IP == ip {
+            return h.Reason, true
+        }
+    }
+    autoIgnoredMutex.Lock()
+    reason, ok := autoIgnored[ip]
+    autoIgnoredMutex.Unlock()
+    return reason, ok
+}
+
+// checkIgnored splits addr ("ip:port") and reports whether its IP is
+// blocked, recording a sighting (for the ignored-hosts page) if so.
+func checkIgnored(addr string) bool {
+    ip := addr
+    if idx := strings.LastIndex(addr, ":"); idx != -1 {
+        ip = addr[:idx]
+    }
+    if _, blocked := ignoredReasonForIP(ip); blocked {
+        ignoredSightingsMutex.Lock()
+        ignoredSightings[addr] = time.Now()
+        ignoredSightingsMutex.Unlock()
+        return true
+    }
+    return false
+}
+
+// IgnoredHostView is one blocked IP plus the specific addresses observed
+// trying to register under it, for the "ignored" page.
+type IgnoredHostView struct {
+    IP           string            `json:"ip"`
+    Reason       string            `json:"reason"`
+    AutoDetected bool              `json:"auto_detected"`
+    Addresses    []IgnoredSighting `json:"addresses"`
+}
+
+// IgnoredSighting is one observed address (a specific port) on a blocked
+// IP, and when it was last seen trying to register.
+type IgnoredSighting struct {
+    Address  string    `json:"address"`
+    LastSeen time.Time `json:"last_seen"`
+}
+
+// GetIgnoredHosts returns every blocked IP -- curated first (stable order),
+// then auto-detected (sorted by IP for determinism) -- with the specific
+// addresses seen trying to register under each, most-recently-seen first.
+func GetIgnoredHosts() []IgnoredHostView {
+    type entry struct {
+        ip, reason string
+        auto       bool
+    }
+    var all []entry
+    seen := make(map[string]bool)
+    for _, h := range ignoredHosts {
+        all = append(all, entry{h.IP, h.Reason, false})
+        seen[h.IP] = true
+    }
+
+    autoIgnoredMutex.Lock()
+    autoIPs := make([]string, 0, len(autoIgnored))
+    for ip := range autoIgnored {
+        if !seen[ip] {
+            autoIPs = append(autoIPs, ip)
+        }
+    }
+    sort.Strings(autoIPs)
+    for _, ip := range autoIPs {
+        all = append(all, entry{ip, autoIgnored[ip], true})
+    }
+    autoIgnoredMutex.Unlock()
+
+    ignoredSightingsMutex.Lock()
+    defer ignoredSightingsMutex.Unlock()
+
+    out := make([]IgnoredHostView, 0, len(all))
+    for _, e := range all {
+        view := IgnoredHostView{IP: e.ip, Reason: e.reason, AutoDetected: e.auto, Addresses: []IgnoredSighting{}}
+        for addr, ts := range ignoredSightings {
+            ip := addr
+            if idx := strings.LastIndex(addr, ":"); idx != -1 {
+                ip = addr[:idx]
+            }
+            if ip == e.ip {
+                view.Addresses = append(view.Addresses, IgnoredSighting{Address: addr, LastSeen: ts})
+            }
+        }
+        sort.Slice(view.Addresses, func(i, j int) bool {
+            return view.Addresses[i].LastSeen.After(view.Addresses[j].LastSeen)
+        })
+        out = append(out, view)
+    }
+    return out
+}
+
+// PurgeIgnored removes any already-known serverList entries (e.g. loaded
+// from persisted state, or seeded, before a host was added to
+// ignoredHosts) that now match a block. Called once at startup; new
+// entries are caught going forward by checkIgnored in the discovery and
+// heartbeat paths directly.
+func PurgeIgnored() {
+    serverMutex.Lock()
+    defer serverMutex.Unlock()
+    for addr := range serverList {
+        if checkIgnored(addr) {
+            delete(serverList, addr)
+        }
+    }
 }
