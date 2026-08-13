@@ -63,27 +63,34 @@ func isKnownAlias(addr string) bool {
 const matchTimeTolerance = 8 * time.Second
 
 // detectClones groups all known online servers by content and collapses
-// any group of 2+ matching addresses into a single CloneGroup. Two passes:
+// any group of 2+ matching addresses into a single CloneGroup. Three
+// tiers, by how much signal is actually available:
 //
-//  1. Servers with at least one real (non-bot) player: match on map and
-//     sorted player+bot roster -- hostname is deliberately NOT part of the
-//     key here. A real player's chosen nickname colliding by chance across
-//     two genuinely independent servers is astronomically unlikely, so the
+//  1. At least one real (non-bot) player: match on map and sorted
+//     player+bot roster -- hostname is deliberately NOT part of the key
+//     here. A real player's chosen nickname colliding by chance across two
+//     genuinely independent servers is astronomically unlikely, so the
 //     roster alone is airtight; requiring hostname too would just let an
 //     operator dodge detection with a cosmetic hostname variation (found
 //     2026-08-13: the same live match broadcasting as "...fpsclasico.de"
 //     on one address and "...fpsclasico.eu" on another -- identical
 //     roster/scores/map, hostname the only thing different).
-//  2. All-bot or empty rosters: bot names are drawn from a small canonical
+//  2. Bots but no real players: match on hostname + map + bot roster
+//     (all three, exact). Bot names alone are drawn from a small canonical
 //     default pool (Sarge, Grunt, ...), so two coincidentally-identical
-//     all-bot servers on a popular default map are a real risk -- these
-//     require an exact hostname match too, and additionally (since an
-//     empty/bot-only roster is weak evidence on its own) every address's
-//     Q3A-family "elapsed match time" (Score_Time, see
-//     MatchTimeSec/HasMatchTime) must stay in sync with the real time
-//     between when each was polled -- see matchTimeTolerance. ET/RTCW
-//     never report Score_Time, so this pass only ever fires for
-//     Q3A/OpenArena.
+//     all-bot servers could exist on a popular default map/hostname -- but
+//     requiring the operator's own (usually distinctive) hostname text to
+//     match too, on top of the specific bot combination, rules that out in
+//     practice (found 2026-08-13: an "Artifex {FFA}" network with 2 bots,
+//     which this tier now correctly catches -- it doesn't send Score_Time
+//     at all, so tier 3 alone was missing it).
+//  3. No roster at all (nothing online, not even bots): the weakest case,
+//     nothing to fingerprint by except hostname+map, so this tier only
+//     trusts a match if every address's Q3A-family "elapsed match time"
+//     (Score_Time, see MatchTimeSec/HasMatchTime) also stays in sync with
+//     the real time between when each was polled -- see
+//     matchTimeTolerance. ET/RTCW never report Score_Time, so this tier
+//     only ever fires for Q3A/OpenArena.
 //
 // Runs periodically (see StartCloneDetection); each run recomputes groups
 // from current online servers and merges any newly-found addresses into
@@ -93,12 +100,16 @@ func detectClones() {
     type cloneKey struct {
         mapName, roster string
     }
+    type hostRosterKey struct {
+        hostname, mapName, roster string
+    }
     type hostMapKey struct {
         hostname, mapName string
     }
 
     rosterGroups := make(map[cloneKey][]string)
-    botOnlyGroups := make(map[hostMapKey][]string)
+    botRosterGroups := make(map[hostRosterKey][]string)
+    emptyGroups := make(map[hostMapKey][]string)
     firstSeen := make(map[string]time.Time)
     lastGoodPoll := make(map[string]time.Time)
     matchTimeSec := make(map[string]int)
@@ -115,22 +126,21 @@ func detectClones() {
         roster := make([]string, 0, len(s.Players)+len(s.Bots))
         roster = append(roster, s.Players...)
         roster = append(roster, s.Bots...)
-
-        if len(s.Players) == 0 {
-            // No real (non-bot) players -- fall back to the stricter,
-            // hostname-anchored, match-time-corroborated path.
-            if s.HasMatchTime {
-                hk := hostMapKey{s.Hostname, s.Map}
-                botOnlyGroups[hk] = append(botOnlyGroups[hk], addr)
-                lastGoodPoll[addr] = s.LastGoodPoll
-                matchTimeSec[addr] = s.MatchTimeSec
-            }
-            continue
-        }
         sort.Strings(roster)
 
-        k := cloneKey{s.Map, strings.Join(roster, "\x00")}
-        rosterGroups[k] = append(rosterGroups[k], addr)
+        switch {
+        case len(s.Players) > 0:
+            k := cloneKey{s.Map, strings.Join(roster, "\x00")}
+            rosterGroups[k] = append(rosterGroups[k], addr)
+        case len(roster) > 0: // bots only
+            k := hostRosterKey{s.Hostname, s.Map, strings.Join(roster, "\x00")}
+            botRosterGroups[k] = append(botRosterGroups[k], addr)
+        case s.HasMatchTime: // nothing online at all
+            hk := hostMapKey{s.Hostname, s.Map}
+            emptyGroups[hk] = append(emptyGroups[hk], addr)
+            lastGoodPoll[addr] = s.LastGoodPoll
+            matchTimeSec[addr] = s.MatchTimeSec
+        }
     }
     serverMutex.Unlock()
 
@@ -147,7 +157,18 @@ func detectClones() {
         mergeGroup(addrs, firstSeen, hostnameOf, reason)
     }
 
-    for hk, addrs := range botOnlyGroups {
+    for k, addrs := range botRosterGroups {
+        if len(addrs) < 2 {
+            continue
+        }
+        reason := fmt.Sprintf(
+            "Reports identical hostname %q, map %q, and bot roster (no real players online) from every address listed -- collapsed into one entry.",
+            k.hostname, k.mapName,
+        )
+        mergeGroup(addrs, firstSeen, hostnameOf, reason)
+    }
+
+    for hk, addrs := range emptyGroups {
         if len(addrs) < 2 {
             continue
         }
@@ -171,7 +192,7 @@ func detectClones() {
             continue
         }
         reason := fmt.Sprintf(
-            "Reports identical hostname %q and map %q with no real players online, but its elapsed match-time clock (Score_Time) stays in sync with the real time between polls across every address listed -- collapsed into one entry.",
+            "Reports identical hostname %q and map %q with nobody (not even bots) online, but its elapsed match-time clock (Score_Time) stays in sync with the real time between polls across every address listed -- collapsed into one entry.",
             hk.hostname, hk.mapName,
         )
         mergeGroup(consistent, firstSeen, hostnameOf, reason)
