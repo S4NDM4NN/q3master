@@ -32,6 +32,8 @@
   .clipboard-icon:hover { color:#fff; }
   .info-toggle { cursor:pointer;color:#66d9ef;font-size:1.2rem;transition:color .2s ease; }
   .info-toggle:hover { color:#0dcaf0; }
+  .back-link { color:#66d9ef;text-decoration:none; }
+  .back-link:hover { color:#0dcaf0;text-decoration:underline; }
   .toolbar { display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem; }
   .counts { opacity:.8 }
   .chart-label { display:block;font-size:.75rem;color:#aaa;margin-bottom:.2rem; }
@@ -63,6 +65,14 @@
   <h1 class="mb-3">
     RTCW / ET Server List
   </h1>
+
+  <div class="mb-3 server-status">
+    <a href="masters.html" class="back-link">Master server status</a>
+    &middot;
+    <a href="add-master.html" class="back-link">Add master servers to your own server</a>
+    &middot;
+    <a href="fix-ingame-browser.html" class="back-link">In-game browser empty? Fix it</a>
+  </div>
 
   <div class="mb-3" id="master-status">
     <span class="status-dot offline-dot" id="master-status-dot"></span>
@@ -164,57 +174,13 @@
       });
     }
 
-    // Status-page-style day-by-day uptime bar: one colored segment per
-    // calendar day for the trailing N days. N is picked from viewport width
-    // rather than fixed at 90: each bar has a CSS min-width (see
-    // .uptime-bar), so cramming 90 of them into a narrow phone-portrait
-    // width would either overflow the page horizontally or force bars
-    // thinner than the min-width allows -- shrinking the day count instead
-    // keeps every bar legible and tappable. Days with no recorded checks
-    // (before this feature existed, or not caught up yet) render as the
-    // neutral "no data" gray.
-    function uptimeBarDayCount(){
-      const w = window.innerWidth;
-      if (w < 420) return 30;
-      if (w < 700) return 60;
-      return 90;
-    }
-    function dayKeyUTC(d){
-      return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
-    }
+    const OFFICIAL_MASTER_HOST = 'wolfmaster.idsoftware.com:27950';
     function refreshMasterUptimeBars(){
-      const days = uptimeBarDayCount();
-      $.getJSON('/api/history/master/daily?days=' + days, function(points){
-        const byDay = {};
-        (points || []).forEach(p => { byDay[dayKeyUTC(new Date(p.ts))] = p; });
-
-        const today = new Date();
-        const container = $('#master-uptime-bars').empty();
-        let trackedDays = 0, upDays = 0;
-
-        for (let i = days - 1; i >= 0; i--){
-          const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-          d.setUTCDate(d.getUTCDate() - i);
-          const label = d.toLocaleDateString(undefined, {month:'short', day:'numeric'});
-          const p = byDay[dayKeyUTC(d)];
-
-          let cls = '', title = `${label}: no data`;
-          if (p){
-            trackedDays++;
-            if (p.uptime_pct >= 99.9){ cls = 'up'; upDays++; }
-            else if (p.uptime_pct > 0){ cls = 'degraded'; }
-            else { cls = 'down'; }
-            title = `${label}: ${Math.round(p.uptime_pct)}% uptime (${p.sample_count} check${p.sample_count===1?'':'s'})`;
-          }
-          container.append(`<div class="uptime-bar ${cls}" title="${title}"></div>`);
-        }
-
-        $('#master-uptime-summary').text(
-          trackedDays ? `${((upDays/trackedDays)*100).toFixed(1)}% of tracked days fully up` : 'No data yet'
-        );
-        const rangeStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-        rangeStart.setUTCDate(rangeStart.getUTCDate() - (days - 1));
-        $('#master-uptime-range-start').text(rangeStart.toLocaleDateString(undefined, {month:'short', day:'numeric'}));
+      refreshUptimeBar({
+        host: OFFICIAL_MASTER_HOST,
+        containerId: 'master-uptime-bars',
+        summaryId: 'master-uptime-summary',
+        rangeStartId: 'master-uptime-range-start',
       });
     }
 
