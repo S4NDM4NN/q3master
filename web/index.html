@@ -134,6 +134,9 @@
 
       <input type="radio" class="btn-check" name="game" id="filter-oa" value="oa" autocomplete="off">
       <label class="btn btn-outline-light" for="filter-oa">OpenArena</label>
+
+      <input type="radio" class="btn-check" name="game" id="filter-unknown" value="unknown" autocomplete="off">
+      <label class="btn btn-outline-warning" for="filter-unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</label>
     </div>
     <select id="version-filter" class="form-select form-select-sm bg-dark text-light border-secondary" style="max-width:200px;">
       <option value="all">All versions</option>
@@ -179,15 +182,23 @@
     // UTC boundaries independent of which protocol they're rolled up from,
     // so same-range series line up point-for-point without extra alignment
     // logic.
-    const GAME_PROTOCOLS = { rtcw: [57, 60], et: [84, 82], q3a: [68], oa: [71] };
+    const GAME_PROTOCOLS = { rtcw: [57, 60, 61], et: [84, 82], q3a: [68], oa: [71] };
     function fetchNetworkHistory(game, range, cb){
       if (game === 'all'){
         $.getJSON('/api/history/network?range=' + range + '&protocol=all', cb);
         return;
       }
-      const protos = GAME_PROTOCOLS[game] || [];
-      if (protos.length <= 1){
-        $.getJSON('/api/history/network?range=' + range + '&protocol=' + (protos[0] || 'all'), cb);
+      // "unknown" (or any future game key without a protocol mapping) has
+      // no dedicated history bucket on the backend -- it's a diagnostic
+      // catch-all, not a stable game, so show no data rather than silently
+      // falling back to the "all" chart.
+      const protos = GAME_PROTOCOLS[game];
+      if (!protos || protos.length === 0){
+        cb([]);
+        return;
+      }
+      if (protos.length === 1){
+        $.getJSON('/api/history/network?range=' + range + '&protocol=' + protos[0], cb);
         return;
       }
       Promise.all(protos.map(p => $.getJSON('/api/history/network?range=' + range + '&protocol=' + p)))
@@ -252,7 +263,7 @@
       const verSel = $('#version-filter');
       const prevVer = verSel.val() || 'all';
       const verOpts = computeFilterOptions(known, game, versionKey,
-        s => game === 'all' ? `${getGameLabel(s.protocol)} ${getVersionLabel(s)}` : getVersionLabel(s));
+        s => game === 'all' ? `${getGameLabel(s)} ${getVersionLabel(s)}` : getVersionLabel(s));
       verSel.empty().append('<option value="all">All versions</option>');
       verOpts.forEach(o => verSel.append(`<option value="${o.key}">${o.label} (${o.count})</option>`));
       verSel.val([...verSel.find('option')].some(o => o.value === prevVer) ? prevVer : 'all');
@@ -294,7 +305,7 @@
         // - counts below need the true online/offline split regardless of
         // whether offline servers are actually being rendered as cards)
         items = items
-          .filter(s => selectedGame === "all" || getGameKey(s.protocol) === selectedGame)
+          .filter(s => selectedGame === "all" || getGameKey(s) === selectedGame)
           .filter(s => selectedVersion === "all" || versionKey(s) === selectedVersion)
           .filter(s => selectedMod === "all" || (s.mod||'') === selectedMod)
           .filter(s =>
@@ -316,10 +327,19 @@
         // Now apply showOffline for what actually gets rendered as cards.
         items = items.filter(s => showOffline || s.online === true);
 
-        // Sort + render as before
+        // Sort: online + populated servers first (both already fine to
+        // shift around live -- that's real player activity), then a
+        // deterministic order for everyone else so the empty-server tail
+        // doesn't visibly reshuffle on every refresh. Sorting that tail by
+        // hostname (not raw address) reads as the "standard" server-browser
+        // order players expect; address is only a final tiebreaker for the
+        // rare case of a blank/duplicate hostname.
+        const plainHostname = s => (s.hostname||'').replace(/\^[^^]/g, '').toLowerCase();
         items.sort((a,b)=>{
           if (a.online !== b.online) return a.online ? -1 : 1;
           if ((b.player_count|0)!==(a.player_count|0)) return (b.player_count|0)-(a.player_count|0);
+          const hn = plainHostname(a).localeCompare(plainHostname(b));
+          if (hn !== 0) return hn;
           return (a.address||'').localeCompare(b.address||'');
         });
 
@@ -345,7 +365,7 @@
                 <div class="card-header d-flex align-items-start justify-content-between">
                   <div class="flex-grow-1">
                     <div class="q3name fs-5">
-                      <span class="badge bg-secondary me-1">${getGameLabel(server.protocol)}</span>
+                      <span class="badge bg-secondary me-1">${getGameLabel(server)}</span>
                       <span class="badge bg-dark border border-secondary me-2">${getVersionLabel(server)}</span>
                       ${hostname}
                     </div>

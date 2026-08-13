@@ -63,10 +63,15 @@ var (
     // new game end-to-end. "82" was added the same day: polling a few of its
     // servers directly showed gamename "silEnT"/"jaymod", both popular ET
     // mods that bump the wire protocol away from stock 84 -- still Enemy
-    // Territory, just a different client-incompatible build. Skipped:
-    // protocol 67 (Q3A 1.31, only 2 servers) and 43 (unidentified, couldn't
-    // confirm which game).
-    protocols  = []string{"57", "60", "84", "82", "68", "71"}
+    // Territory, just a different client-incompatible build. "61" was added
+    // after s4ndmod26's own iortcw-based servers (running iortcw builds
+    // like "1.51c-MP" and a custom "S4NDMoD" one) showed up as unclassified
+    // "Unknown" -- confirmed via ~/s4ndmod26/iortcw/code/qcommon/qcommon.h's
+    // PROTOCOL_VERSION #define: iortcw bumped RTCW's protocol to 61 (one
+    // above stock 1.4's 60), still RTCW under the hood. Skipped: protocol 67
+    // (Q3A 1.31, only 2 servers) and 43 (unidentified, couldn't confirm
+    // which game).
+    protocols  = []string{"57", "60", "61", "84", "82", "68", "71"}
     masterHost = "wolfmaster.idsoftware.com:27950"
 )
 

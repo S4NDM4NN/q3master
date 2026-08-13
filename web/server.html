@@ -134,7 +134,7 @@
     function renderServer(server){
       document.title = (server.hostname || server.address) + ' — RTCW / ET / Q3 Server List';
 
-      $('#d-game').text(getGameLabel(server.protocol));
+      $('#d-game').text(getGameLabel(server));
       $('#d-protocol-version').text(getVersionLabel(server));
       $('#d-hostname').html(parseNameColors(server.hostname || 'Unnamed Server'));
       $('#d-address').text(server.address);

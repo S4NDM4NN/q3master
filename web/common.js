@@ -230,6 +230,7 @@ function parseNameColors(name) {
 const PROTOCOL_INFO = {
   57: { game: 'rtcw' },
   60: { game: 'rtcw' },
+  61: { game: 'rtcw' },
   84: { game: 'et' },
   82: { game: 'et' },
   68: { game: 'q3a' },
@@ -238,11 +239,36 @@ const PROTOCOL_INFO = {
 const GAME_LABELS = { rtcw: 'RTCW', et: 'ET', q3a: 'Quake 3 Arena', oa: 'OpenArena' };
 const GAME_ORDER = ['rtcw', 'et', 'q3a', 'oa'];
 
-function getGameKey(p) {
-  return (PROTOCOL_INFO[p] || {}).game || 'unknown';
+// Fallback for servers whose protocol number isn't in PROTOCOL_INFO --
+// which turned out to include not just genuinely-new protocols, but also
+// older/nonstandard RTCW-family builds (plain "Wolf 1.41-MP", several
+// pre-1.5x iortcw releases) that apparently never send a "protocol" key in
+// their getstatus reply at all, so ServerEntry.Protocol stays 0 forever no
+// matter how many times they're successfully polled -- confirmed by
+// checking the real production list, where these have full hostname/version
+// data but protocol:0. No protocol number will ever fix that, so as a last
+// resort this pattern-matches the engine name off the server's own
+// self-reported version string instead. Order matters: OpenArena's
+// "ioq3+oa..." string starts with "ioq3", so it's checked before the
+// generic ioq3/Q3/CNQ3 patterns that would otherwise misclassify it as
+// plain Quake 3 Arena.
+function guessGameFromVersion(raw) {
+  if (!raw) return null;
+  const v = raw.toLowerCase();
+  if (v.startsWith('iortcw') || v.startsWith('wolf ') || v.startsWith('rtcw')) return 'rtcw';
+  if (v.startsWith('et ') || v.startsWith('etlegacy') || v.startsWith('et legacy')) return 'et';
+  if (v.startsWith('ioq3+oa') || v.startsWith('openarena')) return 'oa';
+  if (v.startsWith('q3 ') || v.startsWith('ioq3') || v.startsWith('cnq3')) return 'q3a';
+  return null;
 }
-function getGameLabel(p) {
-  return GAME_LABELS[getGameKey(p)] || 'Unknown';
+
+function getGameKey(server) {
+  const info = PROTOCOL_INFO[server.protocol];
+  if (info) return info.game;
+  return guessGameFromVersion(server.version) || 'unknown';
+}
+function getGameLabel(server) {
+  return GAME_LABELS[getGameKey(server)] || 'Unknown';
 }
 
 // RTCW's protocol number maps 1:1 to a real, distinct client build, so it
@@ -285,7 +311,7 @@ function getVersionLabel(server) {
 // Combined "Game Version" string, for places that want one label rather
 // than separate game/version badges (tooltips, the per-server detail page).
 function getProtocolLabel(server) {
-  const game = getGameLabel(server.protocol);
+  const game = getGameLabel(server);
   return game === 'Unknown' ? 'Unknown' : game + ' ' + getVersionLabel(server);
 }
 
@@ -303,7 +329,7 @@ function gameFilterLabel(v) {
 function computeFilterOptions(data, game, keyFn, labelFn) {
   const counts = new Map(); // key -> { label, count }
   data.forEach(s => {
-    if (game !== 'all' && getGameKey(s.protocol) !== game) return;
+    if (game !== 'all' && getGameKey(s) !== game) return;
     const key = keyFn(s);
     if (key === null || key === undefined || key === '') return;
     const entry = counts.get(key) || { label: labelFn(s), count: 0 };
