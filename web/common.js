@@ -215,7 +215,28 @@ function q3ColorForCode(ch) {
 function parseNameColors(name) {
   let out = '', color = 'white';
   for (let i = 0; i < name.length; i++) {
-    if (name[i] === '^' && i + 1 < name.length && name[i + 1] !== '^') {
+    if (name[i] === '^' && i + 1 < name.length) {
+      if (name[i + 1] === '^') {
+        // "^^XY": the real client shows this as a literal '^' (the first
+        // caret isn't a valid escape target, since the next char is
+        // another caret) followed by whatever the second caret's pair
+        // produces -- X becomes an invisible color change and Y then just
+        // prints as an ordinary character. In practice this whole 4-char
+        // unit reads as "a literal caret, plus one stray leftover
+        // character" that was never meant to be part of the display --
+        // widespread across real server names (e.g. "^^77Q3RETRO...",
+        // "^^44GENESIS...", the "fpsclasico" network's "^^&&FreeFUn...")
+        // wherever an operator apparently discovered ^^ as "how to show a
+        // literal caret" without realizing it leaves this artifact behind.
+        // So it's collapsed to just the literal caret here -- X still
+        // updates the running color (matching what the real client would
+        // tint everything after it), but neither X nor Y is drawn.
+        out += `<span style="color:${color}">^</span>`;
+        i++; // second '^'
+        if (i + 1 < name.length) { color = q3ColorForCode(name[i + 1]); i++; } // X
+        if (i + 1 < name.length) { i++; } // Y, dropped
+        continue;
+      }
       color = q3ColorForCode(name[++i]); continue;
     }
     out += `<span style="color:${color}">${name[i]}</span>`;
