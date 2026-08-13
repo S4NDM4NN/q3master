@@ -34,14 +34,15 @@
   .info-toggle:hover { color:#0dcaf0; }
   .back-link { color:#66d9ef;text-decoration:none; }
   .back-link:hover { color:#0dcaf0;text-decoration:underline; }
-  .icon-link-group { display:flex;gap:.9rem;flex-shrink:0;margin-top:.3rem; }
-  .icon-link { color:#999;font-size:1.35rem;transition:color .2s ease; }
+  .icon-link-group { display:flex;gap:.9rem;flex-shrink:0;align-items:center; }
+  .icon-link { color:#999;font-size:1.1rem;transition:color .2s ease; }
   .icon-link:hover { color:#66d9ef; }
   .toolbar { display:flex;flex-direction:column;gap:.65rem;margin-bottom:1rem; }
   .toolbar-row { display:flex;flex-wrap:wrap;gap:.75rem;align-items:center; }
-  .toolbar-row-refine { row-gap:.4rem; }
-  .filter-label { font-size:.8rem;color:#999;white-space:nowrap; }
-  .multi-select { flex:1 1 160px;max-width:220px; }
+  .toolbar-row-refine { align-items:flex-start;row-gap:.75rem; }
+  .filter-group { display:flex;flex-direction:column;gap:.3rem; }
+  .filter-label { font-size:.75rem;color:#999;text-transform:uppercase;letter-spacing:.03em; }
+  .multi-select { width:200px; }
   .ms-toggle { width:100%;display:flex;justify-content:space-between;align-items:center;gap:.5rem; }
   .ms-toggle .ms-label { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
   .ms-caret { font-size:.7rem;opacity:.7;flex-shrink:0; }
@@ -93,25 +94,25 @@
 </style>
 </head>
 <body>
-  <div class="d-flex justify-content-between align-items-start mb-3">
-    <h1 class="mb-0">
-      RTCW / ET / Q3 Server List
-    </h1>
+  <h1 class="mb-3">
+    RTCW / ET / Q3 Server List
+  </h1>
+
+  <div class="mb-3 server-status d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <a href="masters.html" class="back-link">Masters</a>
+      &middot;
+      <a href="add-master.html" class="back-link">Add your server</a>
+      &middot;
+      <a href="fix-ingame-browser.html" class="back-link">Fix in-game browser</a>
+      &middot;
+      <a href="contact.html" class="back-link">Contact</a>
+    </div>
     <div class="icon-link-group">
       <a href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord"><i class="bi bi-discord"></i></a>
       <a href="https://github.com/S4NDM4NN/q3master" class="icon-link" target="_blank" rel="noopener" title="Run your own — source on GitHub"><i class="bi bi-github"></i></a>
       <a href="https://www.facebook.com/S4NDMoD/" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Facebook"><i class="bi bi-facebook"></i></a>
     </div>
-  </div>
-
-  <div class="mb-3 server-status">
-    <a href="masters.html" class="back-link">Master server status</a>
-    &middot;
-    <a href="add-master.html" class="back-link">Add master servers to your own server</a>
-    &middot;
-    <a href="fix-ingame-browser.html" class="back-link">In-game browser empty? Fix it</a>
-    &middot;
-    <a href="contact.html" class="back-link">Contact</a>
   </div>
 
   <div class="mb-3" id="master-status">
@@ -160,56 +161,61 @@
       <div id="server-counts" class="fs-6 text-light-emphasis counts ms-auto"></div>
     </div>
 
-    <div class="toolbar-row">
-      <div class="btn-group" role="group" id="game-filter">
-        <input type="radio" class="btn-check" name="game" id="filter-all" value="all" autocomplete="off" checked>
-        <label class="btn btn-outline-light" for="filter-all">All</label>
-
-        <input type="radio" class="btn-check" name="game" id="filter-rtcw" value="rtcw" autocomplete="off">
-        <label class="btn btn-outline-light" for="filter-rtcw">RTCW</label>
-
-        <input type="radio" class="btn-check" name="game" id="filter-et" value="et" autocomplete="off">
-        <label class="btn btn-outline-light" for="filter-et">ET</label>
-
-        <input type="radio" class="btn-check" name="game" id="filter-q3a" value="q3a" autocomplete="off">
-        <label class="btn btn-outline-light" for="filter-q3a">Quake 3 Arena</label>
-
-        <input type="radio" class="btn-check" name="game" id="filter-oa" value="oa" autocomplete="off">
-        <label class="btn btn-outline-light" for="filter-oa">OpenArena</label>
-
-        <input type="radio" class="btn-check" name="game" id="filter-unknown" value="unknown" autocomplete="off">
-        <label class="btn btn-outline-warning" for="filter-unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</label>
-      </div>
-    </div>
-
     <div class="toolbar-row toolbar-row-refine">
-      <label class="filter-label">Version</label>
-      <div class="multi-select" id="version-filter">
-        <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-          <span class="ms-label">All versions</span><i class="bi bi-chevron-down ms-caret"></i>
-        </button>
-        <div class="dropdown-menu ms-menu p-2">
-          <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary ms-search mb-2" placeholder="Search versions...">
-          <div class="d-flex justify-content-between mb-2">
-            <a href="#" class="ms-select-all small">Select all</a>
-            <a href="#" class="ms-select-none small">Deselect all</a>
-          </div>
-          <div class="ms-options"></div>
+      <div class="filter-group">
+        <label class="filter-label">Game</label>
+        <div class="btn-group" role="group" id="game-filter">
+          <input type="radio" class="btn-check" name="game" id="filter-all" value="all" autocomplete="off" checked>
+          <label class="btn btn-outline-light" for="filter-all">All</label>
+
+          <input type="radio" class="btn-check" name="game" id="filter-rtcw" value="rtcw" autocomplete="off">
+          <label class="btn btn-outline-light" for="filter-rtcw">RTCW</label>
+
+          <input type="radio" class="btn-check" name="game" id="filter-et" value="et" autocomplete="off">
+          <label class="btn btn-outline-light" for="filter-et">ET</label>
+
+          <input type="radio" class="btn-check" name="game" id="filter-q3a" value="q3a" autocomplete="off">
+          <label class="btn btn-outline-light" for="filter-q3a">Quake 3</label>
+
+          <input type="radio" class="btn-check" name="game" id="filter-oa" value="oa" autocomplete="off">
+          <label class="btn btn-outline-light" for="filter-oa">OpenArena</label>
+
+          <input type="radio" class="btn-check" name="game" id="filter-unknown" value="unknown" autocomplete="off">
+          <label class="btn btn-outline-warning" for="filter-unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</label>
         </div>
       </div>
 
-      <label class="filter-label">Mod</label>
-      <div class="multi-select" id="mod-filter">
-        <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-          <span class="ms-label">All mods</span><i class="bi bi-chevron-down ms-caret"></i>
-        </button>
-        <div class="dropdown-menu ms-menu p-2">
-          <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary ms-search mb-2" placeholder="Search mods...">
-          <div class="d-flex justify-content-between mb-2">
-            <a href="#" class="ms-select-all small">Select all</a>
-            <a href="#" class="ms-select-none small">Deselect all</a>
+      <div class="filter-group">
+        <label class="filter-label">Version</label>
+        <div class="multi-select" id="version-filter">
+          <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+            <span class="ms-label">All versions</span><i class="bi bi-chevron-down ms-caret"></i>
+          </button>
+          <div class="dropdown-menu ms-menu p-2">
+            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary ms-search mb-2" placeholder="Search versions...">
+            <div class="d-flex justify-content-between mb-2">
+              <a href="#" class="ms-select-all small">Select all</a>
+              <a href="#" class="ms-select-none small">Deselect all</a>
+            </div>
+            <div class="ms-options"></div>
           </div>
-          <div class="ms-options"></div>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Mod</label>
+        <div class="multi-select" id="mod-filter">
+          <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+            <span class="ms-label">All mods</span><i class="bi bi-chevron-down ms-caret"></i>
+          </button>
+          <div class="dropdown-menu ms-menu p-2">
+            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary ms-search mb-2" placeholder="Search mods...">
+            <div class="d-flex justify-content-between mb-2">
+              <a href="#" class="ms-select-all small">Select all</a>
+              <a href="#" class="ms-select-none small">Deselect all</a>
+            </div>
+            <div class="ms-options"></div>
+          </div>
         </div>
       </div>
     </div>
