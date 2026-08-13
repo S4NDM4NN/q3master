@@ -609,14 +609,10 @@
                 data-version="${(server.version||'').toLowerCase()}">
               <div class="card">
                 <div class="card-header">
-                  <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
-                    <div class="d-flex align-items-center flex-wrap gap-2">
-                      <span class="badge bg-secondary">${getGameLabel(server)}</span>
+                  <div class="d-flex align-items-start justify-content-between gap-2">
+                    <div class="q3name">
+                      <span class="badge bg-secondary me-1">${getGameLabel(server)}</span>
                       <span class="badge bg-dark border border-secondary">${getVersionLabel(server)}</span>
-                      <span class="address d-flex align-items-center">
-                        <code id="ip-${idx}" class="me-1">${server.address}</code>
-                        <i class="bi bi-clipboard clipboard-icon" data-ip="${server.address}" title="Copy to clipboard"></i>
-                      </span>
                     </div>
                     <div class="server-status flex-shrink-0" title="${label}">
                       <span class="status-dot ${dot}"></span>
@@ -625,6 +621,11 @@
                   </div>
 
                   <div class="q3name fs-5 hostname-line mt-1">${hostname}</div>
+
+                  <div class="address d-flex align-items-center mt-1">
+                    <code id="ip-${idx}" class="me-2">${server.address}</code>
+                    <i class="bi bi-clipboard clipboard-icon" data-ip="${server.address}" title="Copy to clipboard"></i>
+                  </div>
 
                   <div class="mod-map-row mt-1">
                     <span><span class="text-light-emphasis">Mod:</span> <span class="text-info">${server.mod||'unknown'}</span></span>
