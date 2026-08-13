@@ -615,13 +615,13 @@
                       <span class="badge bg-dark border border-secondary">${getVersionLabel(server)}</span>
                     </div>
                     <div class="text-end flex-shrink-0">
-                      <span class="server-status" title="${label}">
-                        <span class="status-dot ${dot}"></span>
-                        ${hb ? '<i class="bi bi-broadcast heartbeat-icon" title="Direct heartbeat seen recently"></i>' : ''}
-                      </span>
-                      <span class="player-count ms-2">
+                      <span class="player-count">
                         ${(server.player_count??0)}/${server.max_players??0} players
                         ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
+                      </span>
+                      <span class="server-status ms-2" title="${label}">
+                        <span class="status-dot ${dot}"></span>
+                        ${hb ? '<i class="bi bi-broadcast heartbeat-icon" title="Direct heartbeat seen recently"></i>' : ''}
                       </span>
                     </div>
                   </div>
