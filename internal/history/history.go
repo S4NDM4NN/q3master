@@ -35,11 +35,15 @@ var (
 	networkSamplesColl *mongo.Collection
 	networkHourlyColl  *mongo.Collection
 	networkDailyColl   *mongo.Collection
+	masterSamplesColl  *mongo.Collection
+	masterHourlyColl   *mongo.Collection
+	masterDailyColl    *mongo.Collection
 
 	enabled bool
 
 	sampleCh        chan sampleDoc
 	networkSampleCh chan networkSampleDoc
+	masterSampleCh  chan masterSampleDoc
 )
 
 // Enabled reports whether history tracking is active.
@@ -81,13 +85,18 @@ func Init(uri, dbName string) error {
 	networkSamplesColl = db.Collection("network_samples")
 	networkHourlyColl = db.Collection("network_hourly")
 	networkDailyColl = db.Collection("network_daily")
+	masterSamplesColl = db.Collection("master_samples")
+	masterHourlyColl = db.Collection("master_hourly")
+	masterDailyColl = db.Collection("master_daily")
 
 	sampleCh = make(chan sampleDoc, 1024)
 	networkSampleCh = make(chan networkSampleDoc, 64)
+	masterSampleCh = make(chan masterSampleDoc, 16)
 	for i := 0; i < 2; i++ {
 		go sampleWriter()
 	}
 	go networkSampleWriter()
+	go masterSampleWriter()
 
 	enabled = true
 	log.Println("history: connected to MongoDB, player-count history tracking enabled")
@@ -113,6 +122,15 @@ func ensureCollections(ctx context.Context) error {
 	if err := createTieredIndexes(ctx, "network_daily", "protocol", "day_ts", 0); err != nil {
 		return err
 	}
+	if err := createTimeSeries(ctx, "master_samples", "", RawRetention); err != nil {
+		return err
+	}
+	if err := createTieredIndexes(ctx, "master_hourly", "", "hour_ts", HourlyRetention); err != nil {
+		return err
+	}
+	if err := createTieredIndexes(ctx, "master_daily", "", "day_ts", 0); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -136,18 +154,34 @@ func createTimeSeries(ctx context.Context, name, metaField string, expireAfter t
 // (address for per-server collections, protocol for network-wide ones): a
 // unique compound index for upsert targeting, plus (if ttl > 0) a separate
 // TTL index on the timestamp field alone (TTL indexes must be single-field).
+//
+// metaField may be "" for a global, unpartitioned series (e.g. master-status
+// history, which has nothing to partition by). In that case a single index
+// on tsField alone carries both uniqueness and (if ttl > 0) the TTL -- Mongo
+// allows unique+TTL on the same index, and a separate second index would
+// collide with it (identical key pattern, "IndexOptionsConflict").
 func createTieredIndexes(ctx context.Context, collName, metaField, tsField string, ttl time.Duration) error {
 	coll := db.Collection(collName)
-	models := []mongo.IndexModel{
-		{
+	var models []mongo.IndexModel
+	if metaField != "" {
+		models = append(models, mongo.IndexModel{
 			Keys:    bson.D{{Key: metaField, Value: 1}, {Key: tsField, Value: 1}},
 			Options: options.Index().SetUnique(true),
-		},
-	}
-	if ttl > 0 {
+		})
+		if ttl > 0 {
+			models = append(models, mongo.IndexModel{
+				Keys:    bson.D{{Key: tsField, Value: 1}},
+				Options: options.Index().SetExpireAfterSeconds(int32(ttl.Seconds())),
+			})
+		}
+	} else {
+		idxOpts := options.Index().SetUnique(true)
+		if ttl > 0 {
+			idxOpts = idxOpts.SetExpireAfterSeconds(int32(ttl.Seconds()))
+		}
 		models = append(models, mongo.IndexModel{
 			Keys:    bson.D{{Key: tsField, Value: 1}},
-			Options: options.Index().SetExpireAfterSeconds(int32(ttl.Seconds())),
+			Options: idxOpts,
 		})
 	}
 	_, err := coll.Indexes().CreateMany(ctx, models)
@@ -225,6 +259,27 @@ type networkDailyDoc struct {
 	SampleCount      int       `bson:"sample_count"`
 }
 
+// masterSampleDoc/masterHourlyDoc/masterDailyDoc track reachability of the
+// real (id Software) master server as a single global series -- there's only
+// one such master, so unlike the per-server/per-protocol collections above
+// these carry no partitioning meta field.
+type masterSampleDoc struct {
+	Ts time.Time `bson:"ts"`
+	Up bool      `bson:"up"`
+}
+
+type masterHourlyDoc struct {
+	HourTs      time.Time `bson:"hour_ts"`
+	UptimePct   float64   `bson:"uptime_pct"`
+	SampleCount int       `bson:"sample_count"`
+}
+
+type masterDailyDoc struct {
+	DayTs       time.Time `bson:"day_ts"`
+	UptimePct   float64   `bson:"uptime_pct"`
+	SampleCount int       `bson:"sample_count"`
+}
+
 // --- recording ---
 
 // RecordSample records a single successful poll's player count for a server.
@@ -284,6 +339,35 @@ func networkSampleWriter() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if _, err := networkSamplesColl.InsertOne(ctx, doc); err != nil {
 			log.Printf("history: failed to record network sample: %v", err)
+		}
+		cancel()
+	}
+}
+
+// RecordMasterSample records a single reachability check of the real
+// (id Software) master server. Non-blocking: if history tracking is
+// disabled or the write queue is full, the sample is dropped rather than
+// slowing down the discovery poll.
+func RecordMasterSample(up bool) {
+	if !enabled {
+		return
+	}
+	doc := masterSampleDoc{
+		Ts: time.Now().UTC(),
+		Up: up,
+	}
+	select {
+	case masterSampleCh <- doc:
+	default:
+		log.Println("history: master sample write queue full, dropping sample")
+	}
+}
+
+func masterSampleWriter() {
+	for doc := range masterSampleCh {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if _, err := masterSamplesColl.InsertOne(ctx, doc); err != nil {
+			log.Printf("history: failed to record master sample: %v", err)
 		}
 		cancel()
 	}

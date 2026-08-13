@@ -37,17 +37,19 @@ func setMasterStatus(up bool) {
     }
 }
 
-// StartDiscovery periodically refreshes server addresses from the master list.
-func StartDiscovery(interval time.Duration) {
+// StartDiscovery periodically refreshes server addresses from the master
+// list. record, if non-nil, is called after each discovery attempt with
+// whether the real master was reachable (for history tracking).
+func StartDiscovery(interval time.Duration, record func(up bool)) {
     go func() {
         for {
-            refreshFromMaster()
+            refreshFromMaster(record)
             time.Sleep(interval)
         }
     }()
 }
 
-func refreshFromMaster() {
+func refreshFromMaster(record func(up bool)) {
     anySuccess := false
     for _, proto := range protocols {
         conn, err := net.Dial("udp", masterHost)
@@ -124,4 +126,7 @@ func refreshFromMaster() {
         }()
     }
     setMasterStatus(anySuccess)
+    if record != nil {
+        record(anySuccess)
+    }
 }

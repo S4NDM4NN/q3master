@@ -32,7 +32,7 @@ func main() {
 
     // background workers
     servers.StartPollWorkers(8)
-    servers.StartDiscovery(5 * time.Minute)
+    servers.StartDiscovery(5*time.Minute, history.RecordMasterSample)
     servers.StartPolling(15 * time.Second)
     servers.StartJanitor()
     servers.StartAutosave(stateFile, 2*time.Minute)
@@ -47,6 +47,7 @@ func main() {
     http.HandleFunc("/api/master-status", httpapi.WithCORS(httpapi.ServeMasterStatusAPI))
     http.HandleFunc("/api/history", httpapi.WithCORS(httpapi.ServeHistoryAPI))
     http.HandleFunc("/api/history/network", httpapi.WithCORS(httpapi.ServeNetworkHistoryAPI))
+    http.HandleFunc("/api/history/master/daily", httpapi.WithCORS(httpapi.ServeMasterDailyUptimeAPI))
     http.Handle("/", http.FileServer(http.Dir("web")))
 
     port := os.Getenv("PORT")

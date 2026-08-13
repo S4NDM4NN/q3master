@@ -38,6 +38,12 @@
   .history-chart { display:block; }
   #network-overview .card-body { display:flex;flex-wrap:wrap;gap:1.5rem; }
   #network-overview .chart-col { flex:1 1 240px;min-width:200px; }
+  .uptime-bars { display:flex;gap:2px;height:34px;margin-top:.35rem; }
+  .uptime-bar { flex:1 1 0;min-width:1px;border-radius:2px;background:#333; }
+  .uptime-bar.up { background:#4caf50; }
+  .uptime-bar.degraded { background:#f0ad4e; }
+  .uptime-bar.down { background:#f44336; }
+  .uptime-bars-labels { font-size:.7rem;color:#888;margin-top:.25rem; }
 
   /* --- Mobile layout hardening --- */
   @media (max-width: 768px) {
@@ -61,6 +67,18 @@
   <div class="mb-3" id="master-status">
     <span class="status-dot offline-dot" id="master-status-dot"></span>
     <span id="master-status-label" class="server-status">Official master: checking...</span>
+  </div>
+
+  <div class="mb-3" id="master-uptime">
+    <div class="d-flex justify-content-between align-items-baseline">
+      <span class="chart-label mb-0">Official master uptime</span>
+      <span class="chart-label mb-0" id="master-uptime-summary"></span>
+    </div>
+    <div class="uptime-bars" id="master-uptime-bars"></div>
+    <div class="d-flex justify-content-between uptime-bars-labels">
+      <span id="master-uptime-range-start"></span>
+      <span>Today</span>
+    </div>
   </div>
 
   <div class="mb-3 server-status">
@@ -143,6 +161,60 @@
           pts.map(p => ({ x: new Date(p.ts).getTime(), y: p.total_players })), {color:'#4caf50'});
         drawSparkline(document.getElementById('network-servers-chart'),
           pts.map(p => ({ x: new Date(p.ts).getTime(), y: p.online_server_count })), {color:'#66d9ef'});
+      });
+    }
+
+    // Status-page-style day-by-day uptime bar: one colored segment per
+    // calendar day for the trailing N days. N is picked from viewport width
+    // rather than fixed at 90: each bar has a CSS min-width (see
+    // .uptime-bar), so cramming 90 of them into a narrow phone-portrait
+    // width would either overflow the page horizontally or force bars
+    // thinner than the min-width allows -- shrinking the day count instead
+    // keeps every bar legible and tappable. Days with no recorded checks
+    // (before this feature existed, or not caught up yet) render as the
+    // neutral "no data" gray.
+    function uptimeBarDayCount(){
+      const w = window.innerWidth;
+      if (w < 420) return 30;
+      if (w < 700) return 60;
+      return 90;
+    }
+    function dayKeyUTC(d){
+      return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
+    }
+    function refreshMasterUptimeBars(){
+      const days = uptimeBarDayCount();
+      $.getJSON('/api/history/master/daily?days=' + days, function(points){
+        const byDay = {};
+        (points || []).forEach(p => { byDay[dayKeyUTC(new Date(p.ts))] = p; });
+
+        const today = new Date();
+        const container = $('#master-uptime-bars').empty();
+        let trackedDays = 0, upDays = 0;
+
+        for (let i = days - 1; i >= 0; i--){
+          const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+          d.setUTCDate(d.getUTCDate() - i);
+          const label = d.toLocaleDateString(undefined, {month:'short', day:'numeric'});
+          const p = byDay[dayKeyUTC(d)];
+
+          let cls = '', title = `${label}: no data`;
+          if (p){
+            trackedDays++;
+            if (p.uptime_pct >= 99.9){ cls = 'up'; upDays++; }
+            else if (p.uptime_pct > 0){ cls = 'degraded'; }
+            else { cls = 'down'; }
+            title = `${label}: ${Math.round(p.uptime_pct)}% uptime (${p.sample_count} check${p.sample_count===1?'':'s'})`;
+          }
+          container.append(`<div class="uptime-bar ${cls}" title="${title}"></div>`);
+        }
+
+        $('#master-uptime-summary').text(
+          trackedDays ? `${((upDays/trackedDays)*100).toFixed(1)}% of tracked days fully up` : 'No data yet'
+        );
+        const rangeStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+        rangeStart.setUTCDate(rangeStart.getUTCDate() - (days - 1));
+        $('#master-uptime-range-start').text(rangeStart.toLocaleDateString(undefined, {month:'short', day:'numeric'}));
       });
     }
 
@@ -353,6 +425,9 @@
     refreshMasterStatus();
     setInterval(refreshNetworkHistory, 60000);
     refreshNetworkHistory();
+    setInterval(refreshMasterUptimeBars, 60000);
+    refreshMasterUptimeBars();
+    $(window).on('resize', debounce(refreshMasterUptimeBars, 300));
   </script>
 </body>
 </html>

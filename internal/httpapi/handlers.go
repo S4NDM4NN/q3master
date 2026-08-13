@@ -4,6 +4,7 @@ import (
     "encoding/json"
     "net/http"
     "sort"
+    "strconv"
 
     "q3master/internal/history"
     "q3master/internal/servers"
@@ -85,6 +86,27 @@ func ServeNetworkHistoryAPI(w http.ResponseWriter, r *http.Request) {
     points, err := history.GetNetworkHistory(r.Context(), protocol, since)
     if err != nil {
         http.Error(w, "failed to load network history", http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(points)
+}
+
+// ServeMasterDailyUptimeAPI responds with one uptime point per calendar day
+// for the trailing N days, powering a status-page-style day-by-day uptime
+// bar for the real master server. Query params: days (default 90).
+func ServeMasterDailyUptimeAPI(w http.ResponseWriter, r *http.Request) {
+    days := 90
+    if v := r.URL.Query().Get("days"); v != "" {
+        if n, err := strconv.Atoi(v); err == nil && n > 0 {
+            days = n
+        }
+    }
+
+    points, err := history.GetMasterDailyUptime(r.Context(), days)
+    if err != nil {
+        http.Error(w, "failed to load master daily uptime", http.StatusInternalServerError)
         return
     }
 

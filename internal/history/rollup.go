@@ -42,6 +42,12 @@ func runRollup() {
 	if err := rollupNetwork(ctx, networkHourlyColl, "network_daily", "protocol", "hour_ts", "avg_players", "avg_online_servers", "day_ts", "day"); err != nil {
 		log.Printf("history: network daily rollup failed: %v", err)
 	}
+	if err := rollupMaster(ctx, masterSamplesColl, "master_hourly", "ts", "hour_ts", "hour"); err != nil {
+		log.Printf("history: master hourly rollup failed: %v", err)
+	}
+	if err := rollupMaster(ctx, masterHourlyColl, "master_daily", "hour_ts", "day_ts", "day"); err != nil {
+		log.Printf("history: master daily rollup failed: %v", err)
+	}
 }
 
 // rollup aggregates a per-server source collection (raw samples, keyed by
@@ -160,4 +166,60 @@ func sampleCountExpr(srcTsField string) bson.D {
 		return bson.D{{Key: "$sum", Value: 1}}
 	}
 	return bson.D{{Key: "$sum", Value: "$sample_count"}}
+}
+
+// rollupMaster aggregates the global master-status series (raw samples, or
+// hourly buckets being rolled up again into daily) into destName, grouped
+// only by truncated time bucket -- there's no meta field to partition by,
+// since there's only one real master server being tracked.
+func rollupMaster(ctx context.Context, src *mongo.Collection, destName, srcTsField, destTsField, truncUnit string) error {
+	pipeline := mongo.Pipeline{
+		{{Key: "$group", Value: bson.D{
+			{Key: "_id", Value: bson.D{{Key: "$dateTrunc", Value: bson.D{
+				{Key: "date", Value: "$" + srcTsField},
+				{Key: "unit", Value: truncUnit},
+			}}}},
+			{Key: "uptime_pct", Value: masterUptimeExpr(srcTsField)},
+			{Key: "sample_count", Value: sampleCountExpr(srcTsField)},
+		}}},
+		{{Key: "$project", Value: bson.D{
+			{Key: "_id", Value: 0},
+			{Key: destTsField, Value: "$_id"},
+			{Key: "uptime_pct", Value: 1},
+			{Key: "sample_count", Value: 1},
+		}}},
+		{{Key: "$merge", Value: bson.D{
+			{Key: "into", Value: destName},
+			{Key: "on", Value: destTsField},
+			{Key: "whenMatched", Value: "replace"},
+			{Key: "whenNotMatched", Value: "insert"},
+		}}},
+	}
+
+	cur, err := src.Aggregate(ctx, pipeline)
+	if err != nil {
+		return err
+	}
+	return cur.Close(ctx)
+}
+
+// masterUptimeExpr picks how to compute uptime_pct (0-100) depending on
+// whether the source is raw samples (srcTsField == "ts", boolean "up"
+// field) or an hourly rollup being re-aggregated into daily (already a
+// 0-100 uptime_pct field, simply re-averaged -- the same unweighted
+// simplification the per-server/network daily rollups above already use).
+//
+// $group field expressions must themselves be accumulators (like $avg,
+// $sum) -- $multiply is not one, so scaling to a 0-100 range has to happen
+// *inside* the $avg's per-document expression (averaging 100/0 per
+// document), not by wrapping the accumulator's result in $multiply
+// afterward. The latter looks reasonable but fails at query time with
+// "(Location40237) The $multiply accumulator is a unary operator" since
+// Mongo interprets a bare $multiply in accumulator position as an attempt
+// to use it as one.
+func masterUptimeExpr(srcTsField string) bson.D {
+	if srcTsField == "ts" {
+		return bson.D{{Key: "$avg", Value: bson.D{{Key: "$cond", Value: bson.A{"$up", 100, 0}}}}}
+	}
+	return bson.D{{Key: "$avg", Value: "$uptime_pct"}}
 }
