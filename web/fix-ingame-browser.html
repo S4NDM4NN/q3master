@@ -40,14 +40,26 @@
     Running a server instead? See <a href="add-master.html" class="back-link">adding master servers</a>.
   </p>
 
+  <div class="warn mb-4">
+    This whole page is written for <strong>RTCW / Enemy Territory</strong>, whose client defaults to
+    <code>wolfmaster.idsoftware.com</code> &mdash; that's the specific hostname redirected below.
+    Fixing this for <strong>Quake 3 Arena</strong> instead? Its client defaults to a different hostname,
+    <code>master.quake3arena.com</code> &mdash; use that one in the hosts-file line, not
+    <code>wolfmaster.idsoftware.com</code>, or nothing will change. For
+    <strong>OpenArena or other Q3A-engine source ports</strong>, the default master varies by build; check
+    your own game's <code>sv_master1</code> setting (type it at the console) to find which hostname
+    your client is actually asking, then redirect that one.
+  </div>
+
   <div class="card">
     <div class="card-header">Why the browser is empty</div>
     <div class="card-body">
       <p class="server-status mb-0">
         The game's built-in server browser asks a "master server" for the current list of active servers.
-        By default that's <code>wolfmaster.idsoftware.com</code> &mdash; the official id Software master,
-        which has been unreliable and is currently down. Servers are still up (this website lists them),
-        but your game is asking a master that isn't answering right now, so the browser comes back empty.
+        For RTCW/ET, that's <code>wolfmaster.idsoftware.com</code> by default &mdash; the official id
+        Software master, which has been unreliable and is currently down. Servers are still up (this
+        website lists them), but your game is asking a master that isn't answering right now, so the
+        browser comes back empty.
       </p>
     </div>
   </div>
