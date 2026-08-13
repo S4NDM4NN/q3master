@@ -260,6 +260,8 @@ func pollServer(s *ServerEntry) {
 	newStatus.PlayerCount = len(newStatus.Players)
 	newStatus.BotCount = len(newStatus.Bots)
 
+	suspectedBots := updatePlayerSessions(s.Address, newStatus.Players)
+
 	serverMutex.Lock()
 	s.Hostname = newStatus.Hostname
 	s.Map = newStatus.Map
@@ -276,6 +278,7 @@ func pollServer(s *ServerEntry) {
 	s.BotCount = newStatus.BotCount
 	s.MatchTimeSec = newStatus.MatchTimeSec
 	s.HasMatchTime = newStatus.HasMatchTime
+	s.SuspectedBots = suspectedBots
 	s.LastGoodPoll = time.Now()
 	s.MissedPolls = 0
 	s.State = StateOnline
@@ -318,6 +321,7 @@ func markOffline(s *ServerEntry) bool {
 		if s.MissedPolls >= offlineAfterMissedPolls {
 			s.Online = false
 			s.State = StateOffline
+			clearPlayerSessions(s.Address)
 			return false
 		}
 		return true
@@ -327,6 +331,7 @@ func markOffline(s *ServerEntry) bool {
 	// at 10 missed polls).
 	s.Online = false
 	s.State = StateNew
+	clearPlayerSessions(s.Address)
 	return false
 }
 

@@ -223,6 +223,19 @@ function parseNameColors(name) {
   return out || '&nbsp;';
 }
 
+// Renders one real-player name, flagging it if it's in the server's
+// suspected_bots list (see ServerEntry.SuspectedBots -- a name that's
+// stayed connected suspiciously long without ever leaving, heuristically
+// suggesting it's a spoofed fake-player entry rather than a real human).
+// Matching is on the raw name string, same as what the server reported.
+function formatPlayerName(name, suspectedBots) {
+  const flagged = (suspectedBots || []).includes(name);
+  const warn = flagged
+    ? ' <i class="bi bi-exclamation-triangle-fill suspected-bot-icon" title="Suspected bot: connected continuously for an unusually long time without ever leaving"></i>'
+    : '';
+  return parseNameColors(name) + warn;
+}
+
 // Game taxonomy. Several protocol numbers can belong to the same game
 // (RTCW 1.0 and 1.4 are both "RTCW", just different client builds), so
 // this maps each protocol to a game key for the primary filter/badge,
