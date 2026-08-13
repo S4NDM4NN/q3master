@@ -42,11 +42,24 @@
   .toolbar-row-refine { align-items:flex-start;row-gap:.75rem; }
   .filter-group { display:flex;flex-direction:column;gap:.3rem; }
   .filter-label { font-size:.75rem;color:#999;text-transform:uppercase;letter-spacing:.03em; }
-  .multi-select { width:200px; }
+  .multi-select, .single-select { width:200px; }
+  .ss-options { display:flex;flex-direction:column; }
+  .ss-option {
+    display:block;width:100%;text-align:left;background:none;border:none;padding:.4rem .5rem;
+    color:#ddd;font-family:inherit;font-size:.9rem;border-radius:4px;cursor:pointer;
+  }
+  .ss-option:hover { background:#262626; }
+  .ss-option.active { background:#0dcaf022;color:#0dcaf0; }
+  .ss-option-warn { color:#f0ad4e; }
+  .ss-option-warn.active { background:#f0ad4e22;color:#f0ad4e; }
   .ms-toggle { width:100%;display:flex;justify-content:space-between;align-items:center;gap:.5rem; }
   .ms-toggle .ms-label { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
   .ms-caret { font-size:.7rem;opacity:.7;flex-shrink:0; }
-  .ms-menu { background:#1b1b1b;border:1px solid #333;min-width:260px;max-width:320px;max-height:360px;overflow-y:auto; }
+  /* Matches the server cards' width: body's max-width (820px) minus its
+     2rem padding on each side, same formula used for body itself, so it
+     tracks that value if it ever changes; the vw term is the fallback for
+     viewports narrower than 820px. */
+  .ms-menu { background:#1b1b1b;border:1px solid #333;width:min(calc(820px - 4rem), calc(100vw - 4rem));max-height:360px;overflow-y:auto; }
   .ms-select-all, .ms-select-none { color:#66d9ef;text-decoration:none; }
   .ms-select-all:hover, .ms-select-none:hover { color:#0dcaf0;text-decoration:underline; }
   .ms-options:empty::after { content:"No matches."; color:#888;font-size:.85rem; }
@@ -64,7 +77,6 @@
   .ms-option input[type=checkbox]:focus {
     border-color:#66d9ef;box-shadow:0 0 0 .2rem rgba(13,202,240,.35);
   }
-  #game-filter { flex-wrap:wrap;row-gap:.25rem; }
   .counts { opacity:.8 }
   .chart-label { display:block;font-size:.75rem;color:#aaa;margin-bottom:.2rem; }
   .history-chart { display:block; }
@@ -79,16 +91,16 @@
   .source-badge { display:inline-block;background:#222;border:1px solid #333;border-radius:4px;padding:.1rem .5rem;font-size:.8rem;margin:.15rem .25rem .15rem 0;color:#ccc; }
   .source-badge-heartbeat { background:#0dcaf022;border-color:#0dcaf0;color:#0dcaf0; }
 
+  /* Own class instead of Bootstrap's gap-4 utility -- that utility is
+     !important in Bootstrap 5, so it couldn't be tuned down for mobile
+     without a specificity fight. flex-wrap here means Map drops to its own
+     line if Mod doesn't leave room, with a modest row-gap rather than
+     gap-4's much larger 1.5rem. */
+  .mod-map-row { display:flex;flex-wrap:wrap;gap:.4rem 1.5rem; }
+
   /* --- Mobile layout hardening --- */
   @media (max-width: 768px) {
-    .card-footer-row { flex-direction:column;align-items:flex-start !important; }
-    .card-footer-row > .text-end {
-      width:100%;
-      margin-top:.25rem;
-      text-align:left !important;
-      min-width:0 !important;
-    }
-    .card-header .d-flex.gap-4 { flex-wrap:wrap; gap:.5rem 1rem; }
+    .mod-map-row { flex-direction:column; }
     .player-grid { grid-template-columns:1fr !important; }
   }
 </style>
@@ -164,29 +176,23 @@
     <div class="toolbar-row toolbar-row-refine">
       <div class="filter-group">
         <label class="filter-label">Game</label>
-        <div class="btn-group" role="group" id="game-filter">
-          <input type="radio" class="btn-check" name="game" id="filter-all" value="all" autocomplete="off" checked>
-          <label class="btn btn-outline-light" for="filter-all">All</label>
-
-          <input type="radio" class="btn-check" name="game" id="filter-rtcw" value="rtcw" autocomplete="off">
-          <label class="btn btn-outline-light" for="filter-rtcw">RTCW</label>
-
-          <input type="radio" class="btn-check" name="game" id="filter-et" value="et" autocomplete="off">
-          <label class="btn btn-outline-light" for="filter-et">ET</label>
-
-          <input type="radio" class="btn-check" name="game" id="filter-q3a" value="q3a" autocomplete="off">
-          <label class="btn btn-outline-light" for="filter-q3a">Quake 3</label>
-
-          <input type="radio" class="btn-check" name="game" id="filter-oa" value="oa" autocomplete="off">
-          <label class="btn btn-outline-light" for="filter-oa">OpenArena</label>
-
-          <input type="radio" class="btn-check" name="game" id="filter-unknown" value="unknown" autocomplete="off">
-          <label class="btn btn-outline-warning" for="filter-unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</label>
+        <div class="single-select" id="game-filter">
+          <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <span class="ms-label">All</span><i class="bi bi-chevron-down ms-caret"></i>
+          </button>
+          <div class="dropdown-menu ms-menu p-2">
+            <div class="ss-options">
+              <button type="button" class="ss-option" data-value="all">All</button>
+              <button type="button" class="ss-option" data-value="rtcw">RTCW</button>
+              <button type="button" class="ss-option" data-value="et">ET</button>
+              <button type="button" class="ss-option" data-value="q3a">Quake 3 Arena</button>
+              <button type="button" class="ss-option" data-value="oa">OpenArena</button>
+              <button type="button" class="ss-option ss-option-warn" data-value="unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="toolbar-row toolbar-row-refine">
       <div class="filter-group">
         <label class="filter-label">Version</label>
         <div class="multi-select" id="version-filter">
@@ -293,7 +299,7 @@
     }
 
     function refreshNetworkHistory(){
-      const game = $("input[name='game']:checked").val() || 'all';
+      const game = gameFilter.getSelected();
       const suffix = game === 'all' ? '' : ' — ' + gameFilterLabel(game);
       $('#network-players-label').text('Total real players (7d)' + suffix);
       $('#network-servers-label').text('Online servers (7d)' + suffix);
@@ -419,6 +425,45 @@
       };
     }
 
+    // Single-choice dropdown for the game filter -- same visual shell
+    // (.ms-toggle/.ms-menu) as createMultiSelect, so all three filters read
+    // as matching widgets, but no search/select-all machinery: with only 6
+    // static, always-known options and exactly one active at a time, none
+    // of that applies. Options are fixed in the HTML (data-value + text),
+    // not rebuilt from live data like version/mod.
+    function createSingleSelect(rootId, labels){
+      const $root = $('#' + rootId);
+      const $label = $root.find('.ms-label');
+      const $options = $root.find('.ss-option');
+
+      let selected = 'all';
+      let onChangeCb = null;
+
+      function render(){
+        $label.text(labels[selected] || selected);
+        $options.each(function(){
+          $(this).toggleClass('active', $(this).data('value') === selected);
+        });
+      }
+
+      $options.on('click', function(){
+        selected = $(this).data('value');
+        render();
+        if (onChangeCb) onChangeCb();
+      });
+
+      render();
+
+      return {
+        getSelected(){ return selected; },
+        setSelected(value){ selected = value; render(); },
+        onChange(cb){ onChangeCb = cb; },
+      };
+    }
+
+    const gameFilter = createSingleSelect('game-filter', {
+      all: 'All', rtcw: 'RTCW', et: 'ET', q3a: 'Quake 3 Arena', oa: 'OpenArena', unknown: 'Unknown',
+    });
     const versionFilter = createMultiSelect('version-filter', 'All versions');
     const modFilter = createMultiSelect('mod-filter', 'All mods');
 
@@ -428,7 +473,7 @@
     // filterable has to reflect what's actually out there right now,
     // scoped to the selected game.
     function refreshFilterOptions(data){
-      const game = $("input[name='game']:checked").val() || 'all';
+      const game = gameFilter.getSelected();
       const known = data.filter(s => !isNewServer(s));
 
       versionFilter.setOptions(computeFilterOptions(known, game, versionKey,
@@ -444,7 +489,7 @@
     // value.
     function updateFilterURL(){
       const params = new URLSearchParams(location.search);
-      const game = $("input[name='game']:checked").val() || 'all';
+      const game = gameFilter.getSelected();
       const versions = versionFilter.getSelected();
       const mods = modFilter.getSelected();
 
@@ -459,8 +504,8 @@
     function applyFiltersFromURL(){
       const params = new URLSearchParams(location.search);
       const game = params.get('game');
-      if (game && $(`#game-filter input[value="${game}"]`).length) {
-        $(`#game-filter input[value="${game}"]`).prop('checked', true);
+      if (game && $(`#game-filter .ss-option[data-value="${game}"]`).length) {
+        gameFilter.setSelected(game);
       }
       const versionParam = params.get('version');
       if (versionParam) versionFilter.setSelected(versionParam.split(','));
@@ -485,7 +530,7 @@
         refreshFilterOptions(data);
 
         const showOffline = $("#showOfflineToggle").is(":checked");
-        const selectedGame = $("input[name='game']:checked").val();
+        const selectedGame = gameFilter.getSelected();
         const selectedVersions = versionFilter.getSelected();
         const selectedMods = modFilter.getSelected();
         const q = ($('#server-filter').val()||'').toLowerCase();
@@ -564,10 +609,14 @@
                 data-version="${(server.version||'').toLowerCase()}">
               <div class="card">
                 <div class="card-header">
-                  <div class="d-flex align-items-start justify-content-between gap-2">
-                    <div class="q3name">
-                      <span class="badge bg-secondary me-1">${getGameLabel(server)}</span>
+                  <div class="d-flex align-items-start justify-content-between gap-2 flex-wrap">
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                      <span class="badge bg-secondary">${getGameLabel(server)}</span>
                       <span class="badge bg-dark border border-secondary">${getVersionLabel(server)}</span>
+                      <span class="address d-flex align-items-center">
+                        <code id="ip-${idx}" class="me-1">${server.address}</code>
+                        <i class="bi bi-clipboard clipboard-icon" data-ip="${server.address}" title="Copy to clipboard"></i>
+                      </span>
                     </div>
                     <div class="server-status flex-shrink-0">
                       <span class="status-dot ${dot}"></span>${label}
@@ -577,28 +626,22 @@
 
                   <div class="q3name fs-5 hostname-line mt-1">${hostname}</div>
 
-                  <div class="address d-flex align-items-center mt-1">
-                    <code id="ip-${idx}" class="me-2">${server.address}</code>
-                    <i class="bi bi-clipboard clipboard-icon" data-ip="${server.address}" title="Copy to clipboard"></i>
+                  <div class="mod-map-row mt-1">
+                    <span><span class="text-light-emphasis">Mod:</span> <span class="text-info">${server.mod||'unknown'}</span></span>
+                    <span><span class="text-light-emphasis">Map:</span> <span class="text-warning">${server.map||'unknown'}</span></span>
                   </div>
 
-                  <div class="card-footer-row d-flex align-items-end justify-content-between flex-wrap gap-2 mt-2">
-                    <div class="d-flex gap-4">
-                      <div><span class="text-light-emphasis">Mod:</span> <span class="text-info">${server.mod||'unknown'}</span></div>
-                      <div><span class="text-light-emphasis">Map:</span> <span class="text-warning">${server.map||'unknown'}</span></div>
+                  <div class="text-end mt-2">
+                    <div class="player-count">
+                      ${(server.player_count??0)}/${server.max_players??0} players
+                      ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
                     </div>
-                    <div class="text-end" style="min-width: 160px;">
-                      <div class="player-count">
-                        ${(server.player_count??0)}/${server.max_players??0} players
-                        ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
-                      </div>
-                      <div class="text-end" style="font-size:.85rem;color:${server.online?'#ccc':'#f0ad4e'};">
-                        Last seen: ${formatLastSeen(server.last_seen)}
-                      </div>
-                      <div class="text-end mt-2">
-                        <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page" class="me-3"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
-                        <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
-                      </div>
+                    <div class="text-end" style="font-size:.85rem;color:${server.online?'#ccc':'#f0ad4e'};">
+                      Last seen: ${formatLastSeen(server.last_seen)}
+                    </div>
+                    <div class="text-end mt-2">
+                      <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page" class="me-3"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
+                      <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
                     </div>
                   </div>
                 </div>
@@ -676,7 +719,7 @@
     // game + version + mod + showOffline: instant re-render. render()
     // rebuilds the version/mod dropdowns itself (scoped to whatever game is
     // now selected), so no separate refresh call is needed here.
-    $('#game-filter input').off('change').on('change', function(){
+    gameFilter.onChange(function(){
       refreshNow();
       refreshNetworkHistory();
       updateFilterURL();
