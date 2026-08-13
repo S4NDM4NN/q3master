@@ -131,27 +131,32 @@ function drawSparkline(canvas, points, opts = {}) {
   ctx.textAlign = 'left';
 }
 
-// Q3/ET color parsing
-const colorMap = {
-  '0': '#FFFFFF', '1': '#FF0000', '2': '#00FF00', '3': '#FFFF00',
-  '4': '#0000FF', '5': '#00FFFF', '6': '#FF00FF', '7': '#FFFFFF',
-  '8': '#808080', '9': '#000000',
-  'a': '#FF7F00', 'b': '#7FFF00', 'c': '#007FFF', 'd': '#7F00FF', 'e': '#FF007F', 'f': '#00FF7F',
-  'g': '#FFAA00', 'h': '#AAFF00', 'i': '#00AAFF', 'j': '#AA00FF', 'k': '#FF00AA', 'l': '#00FFAA',
-  'm': '#DDDDDD', 'n': '#AAAAAA', 'o': '#777777', 'p': '#444444', 'q': '#222222',
-  'r': '#FFAACC', 's': '#AAFFCC', 't': '#CCAAFF', 'u': '#FFCCAA', 'v': '#CCFFAA',
-  'w': '#AACCAA', 'x': '#AACCFF', 'y': '#CCAACC', 'z': '#AACCBB',
-  'A': '#FF7F00', 'B': '#7FFF00', 'C': '#007FFF', 'D': '#7F00FF', 'E': '#FF007F', 'F': '#00FF7F',
-  'G': '#FFAA00', 'H': '#AAFF00', 'I': '#00AAFF', 'J': '#AA00FF', 'K': '#FF00AA', 'L': '#00FFAA',
-  'M': '#DDDDDD', 'N': '#AAAAAA', 'O': '#777777', 'P': '#444444', 'Q': '#222222',
-  'R': '#FFAACC', 'S': '#AAFFCC', 'T': '#CCAAFF', 'U': '#FFCCAA', 'V': '#CCFFAA',
-  'W': '#AACCAA', 'X': '#AACCFF', 'Y': '#CCAACC', 'Z': '#AACCBB'
-};
+// Q3/ET extended color codes. s4ndmod26's engine fork extends stock
+// Quake3's 10 colors ('^0'-'^9') to a 32-entry table spanning '0'-'O'
+// (ASCII 0x30-0x4F: digits, then punctuation ':;<=>?@', then uppercase
+// 'A'-'O'), indexed via (charCode - 0x30) & 31 -- see
+// Q_IsColorString/ColorIndex/g_color_table in
+// ~/s4ndmod26/mod/src/game/q_shared.h and q_math.c. Values below are
+// g_color_table's floats converted to hex. Because the engine masks with
+// & 31 rather than validating against a fixed set, *any* character after
+// '^' (other than another '^', which prints a literal caret) resolves to
+// some table entry via wraparound -- so this applies unconditionally
+// rather than gating on a lookup, matching the real client instead of an
+// invented substitute palette.
+const Q3_COLOR_TABLE = [
+  '#000000', '#FF0000', '#00FF00', '#FFFF00', '#0000FF', '#00FFFF', '#FF00FF', '#FFFFFF',
+  '#FF8000', '#808080', '#BFBFBF', '#BFBFBF', '#008000', '#808000', '#000080', '#800000',
+  '#804000', '#FF991A', '#008080', '#800080', '#0080FF', '#8000FF', '#3399CC', '#CCFFCC',
+  '#006633', '#FF0033', '#B21A1A', '#993300', '#CC9933', '#999933', '#FFFFBF', '#FFFF80',
+];
+function q3ColorForCode(ch) {
+  return Q3_COLOR_TABLE[(ch.charCodeAt(0) - 0x30) & 31];
+}
 function parseNameColors(name) {
   let out = '', color = 'white';
   for (let i = 0; i < name.length; i++) {
-    if (name[i] === '^' && i + 1 < name.length && colorMap.hasOwnProperty(name[i + 1])) {
-      color = colorMap[name[++i]]; continue;
+    if (name[i] === '^' && i + 1 < name.length && name[i + 1] !== '^') {
+      color = q3ColorForCode(name[++i]); continue;
     }
     out += `<span style="color:${color}">${name[i]}</span>`;
   }
