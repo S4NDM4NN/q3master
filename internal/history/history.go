@@ -29,21 +29,21 @@ const (
 var (
 	db *mongo.Database
 
-	samplesColl        *mongo.Collection
-	hourlyColl         *mongo.Collection
-	dailyColl          *mongo.Collection
-	networkSamplesColl *mongo.Collection
-	networkHourlyColl  *mongo.Collection
-	networkDailyColl   *mongo.Collection
-	masterSamplesColl  *mongo.Collection
-	masterHourlyColl   *mongo.Collection
-	masterDailyColl    *mongo.Collection
+	samplesColl           *mongo.Collection
+	hourlyColl            *mongo.Collection
+	dailyColl             *mongo.Collection
+	networkSamplesColl    *mongo.Collection
+	networkHourlyColl     *mongo.Collection
+	networkDailyColl      *mongo.Collection
+	masterHostSamplesColl *mongo.Collection
+	masterHostHourlyColl  *mongo.Collection
+	masterHostDailyColl   *mongo.Collection
 
 	enabled bool
 
-	sampleCh        chan sampleDoc
-	networkSampleCh chan networkSampleDoc
-	masterSampleCh  chan masterSampleDoc
+	sampleCh           chan sampleDoc
+	networkSampleCh    chan networkSampleDoc
+	masterHostSampleCh chan masterHostSampleDoc
 )
 
 // Enabled reports whether history tracking is active.
@@ -85,18 +85,18 @@ func Init(uri, dbName string) error {
 	networkSamplesColl = db.Collection("network_samples")
 	networkHourlyColl = db.Collection("network_hourly")
 	networkDailyColl = db.Collection("network_daily")
-	masterSamplesColl = db.Collection("master_samples")
-	masterHourlyColl = db.Collection("master_hourly")
-	masterDailyColl = db.Collection("master_daily")
+	masterHostSamplesColl = db.Collection("master_host_samples")
+	masterHostHourlyColl = db.Collection("master_host_hourly")
+	masterHostDailyColl = db.Collection("master_host_daily")
 
 	sampleCh = make(chan sampleDoc, 1024)
 	networkSampleCh = make(chan networkSampleDoc, 64)
-	masterSampleCh = make(chan masterSampleDoc, 16)
+	masterHostSampleCh = make(chan masterHostSampleDoc, 16)
 	for i := 0; i < 2; i++ {
 		go sampleWriter()
 	}
 	go networkSampleWriter()
-	go masterSampleWriter()
+	go masterHostSampleWriter()
 
 	enabled = true
 	log.Println("history: connected to MongoDB, player-count history tracking enabled")
@@ -122,13 +122,13 @@ func ensureCollections(ctx context.Context) error {
 	if err := createTieredIndexes(ctx, "network_daily", "protocol", "day_ts", 0); err != nil {
 		return err
 	}
-	if err := createTimeSeries(ctx, "master_samples", "", RawRetention); err != nil {
+	if err := createTimeSeries(ctx, "master_host_samples", "host", RawRetention); err != nil {
 		return err
 	}
-	if err := createTieredIndexes(ctx, "master_hourly", "", "hour_ts", HourlyRetention); err != nil {
+	if err := createTieredIndexes(ctx, "master_host_hourly", "host", "hour_ts", HourlyRetention); err != nil {
 		return err
 	}
-	if err := createTieredIndexes(ctx, "master_daily", "", "day_ts", 0); err != nil {
+	if err := createTieredIndexes(ctx, "master_host_daily", "host", "day_ts", 0); err != nil {
 		return err
 	}
 	return nil
@@ -151,37 +151,22 @@ func createTimeSeries(ctx context.Context, name, metaField string, expireAfter t
 }
 
 // createTieredIndexes sets up a rollup collection partitioned by metaField
-// (address for per-server collections, protocol for network-wide ones): a
-// unique compound index for upsert targeting, plus (if ttl > 0) a separate
-// TTL index on the timestamp field alone (TTL indexes must be single-field).
-//
-// metaField may be "" for a global, unpartitioned series (e.g. master-status
-// history, which has nothing to partition by). In that case a single index
-// on tsField alone carries both uniqueness and (if ttl > 0) the TTL -- Mongo
-// allows unique+TTL on the same index, and a separate second index would
-// collide with it (identical key pattern, "IndexOptionsConflict").
+// (address for per-server collections, protocol/host for network-wide/
+// master-wide ones): a unique compound index for upsert targeting, plus (if
+// ttl > 0) a separate TTL index on the timestamp field alone (TTL indexes
+// must be single-field).
 func createTieredIndexes(ctx context.Context, collName, metaField, tsField string, ttl time.Duration) error {
 	coll := db.Collection(collName)
-	var models []mongo.IndexModel
-	if metaField != "" {
-		models = append(models, mongo.IndexModel{
+	models := []mongo.IndexModel{
+		{
 			Keys:    bson.D{{Key: metaField, Value: 1}, {Key: tsField, Value: 1}},
 			Options: options.Index().SetUnique(true),
-		})
-		if ttl > 0 {
-			models = append(models, mongo.IndexModel{
-				Keys:    bson.D{{Key: tsField, Value: 1}},
-				Options: options.Index().SetExpireAfterSeconds(int32(ttl.Seconds())),
-			})
-		}
-	} else {
-		idxOpts := options.Index().SetUnique(true)
-		if ttl > 0 {
-			idxOpts = idxOpts.SetExpireAfterSeconds(int32(ttl.Seconds()))
-		}
+		},
+	}
+	if ttl > 0 {
 		models = append(models, mongo.IndexModel{
 			Keys:    bson.D{{Key: tsField, Value: 1}},
-			Options: idxOpts,
+			Options: options.Index().SetExpireAfterSeconds(int32(ttl.Seconds())),
 		})
 	}
 	_, err := coll.Indexes().CreateMany(ctx, models)
@@ -259,22 +244,26 @@ type networkDailyDoc struct {
 	SampleCount      int       `bson:"sample_count"`
 }
 
-// masterSampleDoc/masterHourlyDoc/masterDailyDoc track reachability of the
-// real (id Software) master server as a single global series -- there's only
-// one such master, so unlike the per-server/per-protocol collections above
-// these carry no partitioning meta field.
-type masterSampleDoc struct {
-	Ts time.Time `bson:"ts"`
-	Up bool      `bson:"up"`
+// masterHostSampleDoc/masterHostHourlyDoc/masterHostDailyDoc track
+// reachability of each known master server (servers.knownMasters),
+// partitioned by Host the same way network samples are partitioned by
+// Protocol, so each master's uptime can be queried independently for the
+// multi-master status page.
+type masterHostSampleDoc struct {
+	Ts   time.Time `bson:"ts"`
+	Host string    `bson:"host"`
+	Up   bool      `bson:"up"`
 }
 
-type masterHourlyDoc struct {
+type masterHostHourlyDoc struct {
+	Host        string    `bson:"host"`
 	HourTs      time.Time `bson:"hour_ts"`
 	UptimePct   float64   `bson:"uptime_pct"`
 	SampleCount int       `bson:"sample_count"`
 }
 
-type masterDailyDoc struct {
+type masterHostDailyDoc struct {
+	Host        string    `bson:"host"`
 	DayTs       time.Time `bson:"day_ts"`
 	UptimePct   float64   `bson:"uptime_pct"`
 	SampleCount int       `bson:"sample_count"`
@@ -344,30 +333,31 @@ func networkSampleWriter() {
 	}
 }
 
-// RecordMasterSample records a single reachability check of the real
-// (id Software) master server. Non-blocking: if history tracking is
-// disabled or the write queue is full, the sample is dropped rather than
-// slowing down the discovery poll.
-func RecordMasterSample(up bool) {
+// RecordMasterSample records a single reachability check of one known
+// master server (host is e.g. "wolfmaster.idsoftware.com:27950"). Non-
+// blocking: if history tracking is disabled or the write queue is full,
+// the sample is dropped rather than slowing down the discovery poll.
+func RecordMasterSample(host string, up bool) {
 	if !enabled {
 		return
 	}
-	doc := masterSampleDoc{
-		Ts: time.Now().UTC(),
-		Up: up,
+	doc := masterHostSampleDoc{
+		Ts:   time.Now().UTC(),
+		Host: host,
+		Up:   up,
 	}
 	select {
-	case masterSampleCh <- doc:
+	case masterHostSampleCh <- doc:
 	default:
 		log.Println("history: master sample write queue full, dropping sample")
 	}
 }
 
-func masterSampleWriter() {
-	for doc := range masterSampleCh {
+func masterHostSampleWriter() {
+	for doc := range masterHostSampleCh {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if _, err := masterSamplesColl.InsertOne(ctx, doc); err != nil {
-			log.Printf("history: failed to record master sample: %v", err)
+		if _, err := masterHostSamplesColl.InsertOne(ctx, doc); err != nil {
+			log.Printf("history: failed to record master sample for %s: %v", doc.Host, err)
 		}
 		cancel()
 	}

@@ -42,10 +42,10 @@ func runRollup() {
 	if err := rollupNetwork(ctx, networkHourlyColl, "network_daily", "protocol", "hour_ts", "avg_players", "avg_online_servers", "day_ts", "day"); err != nil {
 		log.Printf("history: network daily rollup failed: %v", err)
 	}
-	if err := rollupMaster(ctx, masterSamplesColl, "master_hourly", "ts", "hour_ts", "hour"); err != nil {
+	if err := rollupMaster(ctx, masterHostSamplesColl, "master_host_hourly", "host", "ts", "hour_ts", "hour"); err != nil {
 		log.Printf("history: master hourly rollup failed: %v", err)
 	}
-	if err := rollupMaster(ctx, masterHourlyColl, "master_daily", "hour_ts", "day_ts", "day"); err != nil {
+	if err := rollupMaster(ctx, masterHostHourlyColl, "master_host_daily", "host", "hour_ts", "day_ts", "day"); err != nil {
 		log.Printf("history: master daily rollup failed: %v", err)
 	}
 }
@@ -168,29 +168,33 @@ func sampleCountExpr(srcTsField string) bson.D {
 	return bson.D{{Key: "$sum", Value: "$sample_count"}}
 }
 
-// rollupMaster aggregates the global master-status series (raw samples, or
-// hourly buckets being rolled up again into daily) into destName, grouped
-// only by truncated time bucket -- there's no meta field to partition by,
-// since there's only one real master server being tracked.
-func rollupMaster(ctx context.Context, src *mongo.Collection, destName, srcTsField, destTsField, truncUnit string) error {
+// rollupMaster aggregates a master-status source collection (raw samples,
+// or hourly buckets being rolled up again into daily) into destName,
+// grouped by metaField (host) + truncated time bucket -- the same shape as
+// rollupNetwork, just with a single aggregated field instead of two.
+func rollupMaster(ctx context.Context, src *mongo.Collection, destName, metaField, srcTsField, destTsField, truncUnit string) error {
 	pipeline := mongo.Pipeline{
 		{{Key: "$group", Value: bson.D{
-			{Key: "_id", Value: bson.D{{Key: "$dateTrunc", Value: bson.D{
-				{Key: "date", Value: "$" + srcTsField},
-				{Key: "unit", Value: truncUnit},
-			}}}},
+			{Key: "_id", Value: bson.D{
+				{Key: metaField, Value: "$" + metaField},
+				{Key: destTsField, Value: bson.D{{Key: "$dateTrunc", Value: bson.D{
+					{Key: "date", Value: "$" + srcTsField},
+					{Key: "unit", Value: truncUnit},
+				}}}},
+			}},
 			{Key: "uptime_pct", Value: masterUptimeExpr(srcTsField)},
 			{Key: "sample_count", Value: sampleCountExpr(srcTsField)},
 		}}},
 		{{Key: "$project", Value: bson.D{
 			{Key: "_id", Value: 0},
-			{Key: destTsField, Value: "$_id"},
+			{Key: metaField, Value: "$_id." + metaField},
+			{Key: destTsField, Value: "$_id." + destTsField},
 			{Key: "uptime_pct", Value: 1},
 			{Key: "sample_count", Value: 1},
 		}}},
 		{{Key: "$merge", Value: bson.D{
 			{Key: "into", Value: destName},
-			{Key: "on", Value: destTsField},
+			{Key: "on", Value: bson.A{metaField, destTsField}},
 			{Key: "whenMatched", Value: "replace"},
 			{Key: "whenNotMatched", Value: "insert"},
 		}}},

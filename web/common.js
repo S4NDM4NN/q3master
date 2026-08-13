@@ -1,9 +1,69 @@
-// Shared helpers for index.html and server.html: canvas sparkline charting
-// and Q3/ET name-color + formatting utilities.
+// Shared helpers for index.html, server.html, and masters.html: canvas
+// sparkline charting, the master-server uptime bar, and Q3/ET name-color +
+// formatting utilities.
 
 function debounce(fn, wait = 150) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
+}
+
+// Status-page-style day-by-day uptime bar for a master server: one colored
+// segment per calendar day for the trailing N days. N is picked from
+// viewport width rather than fixed at 90: each bar has a CSS min-width (see
+// .uptime-bar), so cramming 90 of them into a narrow phone-portrait width
+// would either overflow the page horizontally or force bars thinner than
+// the min-width allows -- shrinking the day count instead keeps every bar
+// legible and tappable. Days with no recorded checks (before this feature
+// existed for that host, or not caught up yet) render as the neutral
+// "no data" gray.
+function uptimeBarDayCount(){
+  const w = window.innerWidth;
+  if (w < 420) return 30;
+  if (w < 700) return 60;
+  return 90;
+}
+function dayKeyUTC(d){
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
+}
+// opts: { host, containerId, summaryId (optional), rangeStartId (optional) }
+function refreshUptimeBar(opts){
+  const days = uptimeBarDayCount();
+  $.getJSON('/api/history/master/daily?host=' + encodeURIComponent(opts.host) + '&days=' + days, function(points){
+    const byDay = {};
+    (points || []).forEach(p => { byDay[dayKeyUTC(new Date(p.ts))] = p; });
+
+    const today = new Date();
+    const container = $('#' + opts.containerId).empty();
+    let trackedDays = 0, upDays = 0;
+
+    for (let i = days - 1; i >= 0; i--){
+      const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+      d.setUTCDate(d.getUTCDate() - i);
+      const label = d.toLocaleDateString(undefined, {month:'short', day:'numeric'});
+      const p = byDay[dayKeyUTC(d)];
+
+      let cls = '', title = `${label}: no data`;
+      if (p){
+        trackedDays++;
+        if (p.uptime_pct >= 99.9){ cls = 'up'; upDays++; }
+        else if (p.uptime_pct > 0){ cls = 'degraded'; }
+        else { cls = 'down'; }
+        title = `${label}: ${Math.round(p.uptime_pct)}% uptime (${p.sample_count} check${p.sample_count===1?'':'s'})`;
+      }
+      container.append(`<div class="uptime-bar ${cls}" title="${title}"></div>`);
+    }
+
+    if (opts.summaryId) {
+      $('#' + opts.summaryId).text(
+        trackedDays ? `${((upDays/trackedDays)*100).toFixed(1)}% of tracked days fully up` : 'No data yet'
+      );
+    }
+    if (opts.rangeStartId) {
+      const rangeStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+      rangeStart.setUTCDate(rangeStart.getUTCDate() - (days - 1));
+      $('#' + opts.rangeStartId).text(rangeStart.toLocaleDateString(undefined, {month:'short', day:'numeric'}));
+    }
+  });
 }
 
 // --- Lightweight canvas line charts (no charting library) ---

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Master Servers — RTCW / ET Server List</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="common.js"></script>
+<style>
+  body { background:#111;color:#ddd;font-family:monospace;padding:2rem; }
+  .card { background:#1b1b1b;border:1px solid #333;margin-bottom:1rem; overflow:hidden; }
+  .card-header { background:#222;padding:1rem; }
+  .card-body { padding:1rem 1.25rem; }
+  .status-dot { width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:6px; }
+  .online-dot { background:#4caf50; }
+  .offline-dot { background:#f44336; }
+  .server-status { font-size:.85rem;color:#ccc; }
+  .chart-label { display:block;font-size:.75rem;color:#aaa;margin-bottom:.2rem; }
+  .back-link { color:#66d9ef;text-decoration:none; }
+  .back-link:hover { color:#0dcaf0;text-decoration:underline; }
+  .uptime-bars { display:flex;gap:2px;height:34px;margin-top:.35rem; }
+  .uptime-bar { flex:1 1 0;min-width:1px;border-radius:2px;background:#333; }
+  .uptime-bar.up { background:#4caf50; }
+  .uptime-bar.degraded { background:#f0ad4e; }
+  .uptime-bar.down { background:#f44336; }
+  .uptime-bars-labels { font-size:.7rem;color:#888;margin-top:.25rem; }
+  .host-code { font-size:.85rem;color:#f58; }
+  .master-label { color:#eee; }
+</style>
+</head>
+<body>
+  <div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <a href="index.html" class="back-link"><i class="bi bi-arrow-left"></i> Back to server list</a>
+    <a href="add-master.html" class="back-link">Add these masters to your own server &rarr;</a>
+  </div>
+
+  <h1 class="mb-2">Master Servers</h1>
+  <p class="server-status mb-4">
+    Live status and uptime history for every master server this list discovers game servers from.
+    "Official" going down doesn't take the list down &mdash; see
+    <a href="add-master.html" class="back-link">why we track more than one</a>.
+    Just want your own in-game server browser working?
+    See <a href="fix-ingame-browser.html" class="back-link">fixing the in-game browser</a> instead.
+  </p>
+
+  <div id="masters-container"></div>
+
+  <script>
+    function hostToId(host){
+      return 'm-' + host.replace(/[^a-zA-Z0-9]/g, '-');
+    }
+
+    function renderMasters(masters){
+      const container = $('#masters-container');
+      const isFirstRender = container.children().length === 0;
+
+      if (isFirstRender) {
+        container.empty();
+        masters.forEach(m => {
+          const id = hostToId(m.host);
+          container.append(`
+            <div class="card">
+              <div class="card-header d-flex align-items-start justify-content-between flex-wrap gap-2">
+                <div>
+                  <div class="fs-5 master-label">${m.label}</div>
+                  <code class="host-code">${m.host}</code>
+                </div>
+                <div class="server-status text-end">
+                  <span class="status-dot offline-dot" id="${id}-dot"></span>
+                  <span id="${id}-label">checking...</span>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-baseline">
+                  <span class="chart-label mb-0">Uptime</span>
+                  <span class="chart-label mb-0" id="${id}-summary"></span>
+                </div>
+                <div class="uptime-bars" id="${id}-bars"></div>
+                <div class="d-flex justify-content-between uptime-bars-labels">
+                  <span id="${id}-range-start"></span>
+                  <span>Today</span>
+                </div>
+              </div>
+            </div>
+          `);
+        });
+      }
+
+      masters.forEach(m => {
+        const id = hostToId(m.host);
+        const dot = m.up ? 'online-dot' : 'offline-dot';
+        $(`#${id}-dot`).removeClass('online-dot offline-dot').addClass(dot);
+        $(`#${id}-label`).text(m.up ? 'reachable' : 'unreachable');
+        refreshUptimeBar({
+          host: m.host,
+          containerId: `${id}-bars`,
+          summaryId: `${id}-summary`,
+          rangeStartId: `${id}-range-start`,
+        });
+      });
+    }
+
+    function refreshMasters(){
+      $.getJSON('/api/master-status/all', renderMasters);
+    }
+
+    refreshMasters();
+    setInterval(refreshMasters, 60000);
+    $(window).on('resize', debounce(refreshMasters, 300));
+  </script>
+</body>
+</html>

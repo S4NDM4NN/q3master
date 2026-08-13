@@ -50,3 +50,33 @@ var (
     protocols  = []string{"57", "60", "84"}
     masterHost = "wolfmaster.idsoftware.com:27950"
 )
+
+// MasterHostInfo names a master server we query for discovery and track
+// status/history for.
+type MasterHostInfo struct {
+    Host  string `json:"host"`
+    Label string `json:"label"`
+}
+
+// knownMasters is queried for server addresses to poll (discovery) and its
+// per-host reachability is tracked and recorded to history (the "master
+// servers" status page). It includes masterHost (the official id Software
+// master -- also tracked individually via MasterStatus/history for the
+// main page's status line, since it's been the one worth watching most
+// closely, and has been unreliable) plus three others that have stepped in
+// while it's down: master.iortcw.org (only sv_master2's default for
+// servers actually running the iortcw engine -- most RTCW/ET servers
+// aren't, so it's a master to add explicitly, not something already
+// covering them), etmaster.net (an explicit replacement for the official
+// ET master), and dpmaster.deathmask.net (a long-running generic idTech3
+// master, also used by many RTCW servers). Confirmed 2026-08-13: wolfmaster
+// returned zero servers across all three protocols while etmaster.net
+// alone returned ~149 ET servers, dpmaster ~57 RTCW 1.4 servers, and
+// master.iortcw.org ~13 RTCW 1.4 + 1 RTCW 1.0 -- querying only the official
+// master was silently missing most of the active server population.
+var knownMasters = []MasterHostInfo{
+    {Host: masterHost, Label: "Official (id Software)"},
+    {Host: "master.iortcw.org:27950", Label: "master.iortcw.org (iortcw project)"},
+    {Host: "etmaster.net:27950", Label: "etmaster.net (community)"},
+    {Host: "dpmaster.deathmask.net:27950", Label: "dpmaster.deathmask.net (community)"},
+}

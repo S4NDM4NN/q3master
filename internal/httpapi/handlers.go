@@ -54,6 +54,14 @@ func ServeMasterStatusAPI(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(servers.GetMasterStatus())
 }
 
+// ServeAllMasterStatusAPI responds with the current reachability of every
+// known master server (see servers.knownMasters), for the multi-master
+// status page.
+func ServeAllMasterStatusAPI(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(servers.GetAllMasterStatuses())
+}
+
 // ServeHistoryAPI responds with player-count history for a single server.
 // Query params: address (required, "ip:port"), range ("7d" | "30d" | "all",
 // default "7d").
@@ -95,8 +103,16 @@ func ServeNetworkHistoryAPI(w http.ResponseWriter, r *http.Request) {
 
 // ServeMasterDailyUptimeAPI responds with one uptime point per calendar day
 // for the trailing N days, powering a status-page-style day-by-day uptime
-// bar for the real master server. Query params: days (default 90).
+// bar for one master server. Query params: host (required, e.g.
+// "wolfmaster.idsoftware.com:27950" -- see servers.knownMasters), days
+// (default 90).
 func ServeMasterDailyUptimeAPI(w http.ResponseWriter, r *http.Request) {
+    host := r.URL.Query().Get("host")
+    if host == "" {
+        http.Error(w, "missing host parameter", http.StatusBadRequest)
+        return
+    }
+
     days := 90
     if v := r.URL.Query().Get("days"); v != "" {
         if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -104,7 +120,7 @@ func ServeMasterDailyUptimeAPI(w http.ResponseWriter, r *http.Request) {
         }
     }
 
-    points, err := history.GetMasterDailyUptime(r.Context(), days)
+    points, err := history.GetMasterDailyUptime(r.Context(), host, days)
     if err != nil {
         http.Error(w, "failed to load master daily uptime", http.StatusInternalServerError)
         return

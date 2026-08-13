@@ -164,12 +164,13 @@ func GetNetworkHistory(ctx context.Context, protocol string, since time.Time) ([
 
 // GetMasterDailyUptime returns one uptime point per calendar day for the
 // trailing `days` days (including today, which keeps updating as the day's
-// rollup re-runs), always at daily granularity. Unlike GetServerHistory/
-// GetNetworkHistory's tiered raw/hourly/daily merge (built for a continuous
-// line chart that wants finer resolution near "now"), this powers a
-// status-page-style day-by-day uptime bar, where every bar must represent
-// exactly one calendar day regardless of how recent it is.
-func GetMasterDailyUptime(ctx context.Context, days int) ([]MasterPoint, error) {
+// rollup re-runs) for the given master host, always at daily granularity.
+// Unlike GetServerHistory/GetNetworkHistory's tiered raw/hourly/daily merge
+// (built for a continuous line chart that wants finer resolution near
+// "now"), this powers a status-page-style day-by-day uptime bar, where
+// every bar must represent exactly one calendar day regardless of how
+// recent it is.
+func GetMasterDailyUptime(ctx context.Context, host string, days int) ([]MasterPoint, error) {
 	if !enabled {
 		return []MasterPoint{}, nil
 	}
@@ -180,7 +181,7 @@ func GetMasterDailyUptime(ctx context.Context, days int) ([]MasterPoint, error) 
 	now := time.Now().UTC()
 	from := now.AddDate(0, 0, -days)
 
-	docs, err := queryMasterDaily(ctx, from, now)
+	docs, err := queryMasterHostDaily(ctx, host, from, now)
 	if err != nil {
 		return nil, err
 	}
@@ -191,15 +192,16 @@ func GetMasterDailyUptime(ctx context.Context, days int) ([]MasterPoint, error) 
 	return points, nil
 }
 
-func queryMasterDaily(ctx context.Context, from, to time.Time) ([]masterDailyDoc, error) {
+func queryMasterHostDaily(ctx context.Context, host string, from, to time.Time) ([]masterHostDailyDoc, error) {
 	filter := bson.D{
+		{Key: "host", Value: host},
 		{Key: "day_ts", Value: bson.D{{Key: "$gte", Value: from}, {Key: "$lte", Value: to}}},
 	}
-	cur, err := masterDailyColl.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "day_ts", Value: 1}}))
+	cur, err := masterHostDailyColl.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "day_ts", Value: 1}}))
 	if err != nil {
 		return nil, err
 	}
-	var docs []masterDailyDoc
+	var docs []masterHostDailyDoc
 	if err := cur.All(ctx, &docs); err != nil {
 		return nil, err
 	}
