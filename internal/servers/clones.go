@@ -67,21 +67,40 @@ func isKnownAlias(addr string) bool {
 // essentially never satisfy it by chance.
 const matchTimeTolerance = 8 * time.Second
 
+// realRosterMinSize/realRosterMaxDrift bound the fuzzy match used for
+// tier 1 below: two real-player rosters on the same map are treated as the
+// same clone if they're either byte-identical, or differ by at most
+// realRosterMaxDrift names while both having at least realRosterMinSize
+// names total. This absorbs ordinary player churn between when different
+// addresses get polled (found 2026-08-13: two aliases of the same busy A51
+// server differed by exactly one swapped player -- 15 of 16 names
+// identical -- and so never matched under a byte-exact comparison, no
+// matter how long detection kept running) without opening the door to
+// coincidence: two genuinely independent, decently-populated matches
+// essentially never share all but one or two of their real players' exact
+// chosen nicknames.
+const (
+    realRosterMinSize  = 6
+    realRosterMaxDrift = 2
+)
+
 // detectClones groups all known online servers by content and collapses
 // any group of 2+ matching addresses into a single CloneGroup. Three
 // tiers, by how much signal is actually available:
 //
-//  1. At least one real (non-bot) player: match on map and sorted
-//     player+bot roster -- hostname is deliberately NOT part of the key
-//     here. A real player's chosen nickname colliding by chance across two
-//     genuinely independent servers is astronomically unlikely, so the
-//     roster alone is airtight; requiring hostname too would just let an
-//     operator dodge detection with a cosmetic hostname variation (found
-//     2026-08-13: the same live match broadcasting as "...fpsclasico.de"
-//     on one address and "...fpsclasico.eu" on another -- identical
-//     roster/scores/map, hostname the only thing different).
+//  1. At least one real (non-bot) player: match on map and player+bot
+//     roster, fuzzily (see realRosterMinSize/realRosterMaxDrift) -- hostname
+//     is deliberately NOT part of the key here. A real player's chosen
+//     nickname colliding by chance across two genuinely independent servers
+//     is astronomically unlikely, so the roster alone is airtight;
+//     requiring hostname too would just let an operator dodge detection
+//     with a cosmetic hostname variation (found 2026-08-13: the same live
+//     match broadcasting as "...fpsclasico.de" on one address and
+//     "...fpsclasico.eu" on another -- identical roster/scores/map,
+//     hostname the only thing different).
 //  2. Bots but no real players: match on hostname + map + bot roster
-//     (all three, exact). Bot names alone are drawn from a small canonical
+//     (all three, exact -- no fuzz here, bot rosters don't churn the way
+//     real players do). Bot names alone are drawn from a small canonical
 //     default pool (Sarge, Grunt, ...), so two coincidentally-identical
 //     all-bot servers could exist on a popular default map/hostname -- but
 //     requiring the operator's own (usually distinctive) hostname text to
@@ -102,8 +121,10 @@ const matchTimeTolerance = 8 * time.Second
 // existing groups, so a primary picked in an earlier run stays stable
 // across restarts/cycles.
 func detectClones() {
-    type cloneKey struct {
-        mapName, roster string
+    type realEntry struct {
+        addr    string
+        mapName string
+        roster  map[string]bool
     }
     type hostRosterKey struct {
         hostname, mapName, roster string
@@ -112,7 +133,7 @@ func detectClones() {
         hostname, mapName string
     }
 
-    rosterGroups := make(map[cloneKey][]string)
+    var realEntries []realEntry
     botRosterGroups := make(map[hostRosterKey][]string)
     emptyGroups := make(map[hostMapKey][]string)
     firstSeen := make(map[string]time.Time)
@@ -133,13 +154,16 @@ func detectClones() {
         roster := make([]string, 0, len(s.Players)+len(s.Bots))
         roster = append(roster, s.Players...)
         roster = append(roster, s.Bots...)
-        sort.Strings(roster)
 
         switch {
         case len(s.Players) > 0:
-            k := cloneKey{s.Map, strings.Join(roster, "\x00")}
-            rosterGroups[k] = append(rosterGroups[k], addr)
+            rosterSet := make(map[string]bool, len(roster))
+            for _, n := range roster {
+                rosterSet[n] = true
+            }
+            realEntries = append(realEntries, realEntry{addr: addr, mapName: s.Map, roster: rosterSet})
         case len(roster) > 0: // bots only
+            sort.Strings(roster)
             k := hostRosterKey{s.Hostname, s.Map, strings.Join(roster, "\x00")}
             botRosterGroups[k] = append(botRosterGroups[k], addr)
         case s.HasMatchTime: // nothing online at all
@@ -153,13 +177,42 @@ func detectClones() {
 
     cloneMutex.Lock()
 
-    for k, addrs := range rosterGroups {
-        if len(addrs) < 2 {
+    // Tier 1: bucket by map (cheap, still a hard requirement), then union
+    // same-map entries whose rosters are identical or near-identical.
+    byMap := make(map[string][]int)
+    for i, e := range realEntries {
+        byMap[e.mapName] = append(byMap[e.mapName], i)
+    }
+    uf := newUnionFind(len(realEntries))
+    for _, idxs := range byMap {
+        for a := 0; a < len(idxs); a++ {
+            for b := a + 1; b < len(idxs); b++ {
+                i, j := idxs[a], idxs[b]
+                diff := rosterSymmetricDiff(realEntries[i].roster, realEntries[j].roster)
+                if diff == 0 || (diff <= realRosterMaxDrift &&
+                    len(realEntries[i].roster) >= realRosterMinSize &&
+                    len(realEntries[j].roster) >= realRosterMinSize) {
+                    uf.union(i, j)
+                }
+            }
+        }
+    }
+    components := make(map[int][]int)
+    for i := range realEntries {
+        root := uf.find(i)
+        components[root] = append(components[root], i)
+    }
+    for _, idxs := range components {
+        if len(idxs) < 2 {
             continue
         }
+        addrs := make([]string, len(idxs))
+        for k, idx := range idxs {
+            addrs[k] = realEntries[idx].addr
+        }
         reason := fmt.Sprintf(
-            "Reports identical map %q and player/bot roster from every address listed -- collapsed into one entry.",
-            k.mapName,
+            "Reports identical (or near-identical, allowing for ordinary player churn between polls) map %q and player/bot roster from every address listed -- collapsed into one entry.",
+            realEntries[idxs[0]].mapName,
         )
         mergeGroup(addrs, firstSeen, hostnameOf, protocolOf, reason)
     }
@@ -268,6 +321,57 @@ func existingPrimaryFor(addrs []string) (string, bool) {
         }
     }
     return "", false
+}
+
+// rosterSymmetricDiff counts names present in exactly one of the two
+// rosters -- 0 for byte-identical, small for a handful of players
+// joining/leaving between when each address was polled.
+func rosterSymmetricDiff(a, b map[string]bool) int {
+    diff := 0
+    for name := range a {
+        if !b[name] {
+            diff++
+        }
+    }
+    for name := range b {
+        if !a[name] {
+            diff++
+        }
+    }
+    return diff
+}
+
+// unionFind is a minimal disjoint-set structure (path-compressed finds,
+// unranked unions -- the tiny input sizes here don't need union-by-rank)
+// used to cluster tier 1's same-map real-player entries into connected
+// components under rosterSymmetricDiff, so near-matches chain together
+// (A~B~C) even if the drift accumulates beyond realRosterMaxDrift between
+// the two most-different members of a larger group.
+type unionFind struct {
+    parent []int
+}
+
+func newUnionFind(n int) *unionFind {
+    uf := &unionFind{parent: make([]int, n)}
+    for i := range uf.parent {
+        uf.parent[i] = i
+    }
+    return uf
+}
+
+func (uf *unionFind) find(x int) int {
+    for uf.parent[x] != x {
+        uf.parent[x] = uf.parent[uf.parent[x]]
+        x = uf.parent[x]
+    }
+    return x
+}
+
+func (uf *unionFind) union(a, b int) {
+    ra, rb := uf.find(a), uf.find(b)
+    if ra != rb {
+        uf.parent[ra] = rb
+    }
 }
 
 // applyCloneGroups stamps each primary's ServerEntry with its current AKA

@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script src="common.js"></script>
 <style>
-  body { background:#111;color:#ddd;font-family:monospace;padding:2rem; }
+  body { background:#111;color:#ddd;font-family:monospace;padding:2rem;max-width:1100px;margin:0 auto; }
   .q3name span { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
   .card { background:#1b1b1b;border:1px solid #333;margin-bottom:1rem; overflow:hidden; }
   .card-header { background:#222;padding:1rem; }
@@ -34,11 +34,35 @@
   .info-toggle:hover { color:#0dcaf0; }
   .back-link { color:#66d9ef;text-decoration:none; }
   .back-link:hover { color:#0dcaf0;text-decoration:underline; }
+  .icon-link-group { display:flex;gap:.9rem;flex-shrink:0;margin-top:.3rem; }
+  .icon-link { color:#999;font-size:1.35rem;transition:color .2s ease; }
+  .icon-link:hover { color:#66d9ef; }
   .toolbar { display:flex;flex-direction:column;gap:.65rem;margin-bottom:1rem; }
   .toolbar-row { display:flex;flex-wrap:wrap;gap:.75rem;align-items:center; }
   .toolbar-row-refine { row-gap:.4rem; }
   .filter-label { font-size:.8rem;color:#999;white-space:nowrap; }
-  #version-filter, #mod-filter { max-width:220px;flex:1 1 160px; }
+  .multi-select { flex:1 1 160px;max-width:220px; }
+  .ms-toggle { width:100%;display:flex;justify-content:space-between;align-items:center;gap:.5rem; }
+  .ms-toggle .ms-label { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+  .ms-caret { font-size:.7rem;opacity:.7;flex-shrink:0; }
+  .ms-menu { background:#1b1b1b;border:1px solid #333;min-width:260px;max-width:320px;max-height:360px;overflow-y:auto; }
+  .ms-select-all, .ms-select-none { color:#66d9ef;text-decoration:none; }
+  .ms-select-all:hover, .ms-select-none:hover { color:#0dcaf0;text-decoration:underline; }
+  .ms-options:empty::after { content:"No matches."; color:#888;font-size:.85rem; }
+  .ms-option { display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.3rem 0;border-bottom:1px solid #262626; }
+  .ms-option:last-child { border-bottom:none; }
+  .ms-option label { color:#ddd;cursor:pointer;font-size:.9rem;flex:1 1 auto; }
+  .ms-option .ms-count { color:#888; }
+  .ms-option input[type=checkbox] {
+    flex-shrink:0;width:1.1rem;height:1.1rem;margin:0;cursor:pointer;
+    background-color:#111;border:1px solid #777;
+  }
+  .ms-option input[type=checkbox]:checked {
+    background-color:#0dcaf0;border-color:#0dcaf0;
+  }
+  .ms-option input[type=checkbox]:focus {
+    border-color:#66d9ef;box-shadow:0 0 0 .2rem rgba(13,202,240,.35);
+  }
   #game-filter { flex-wrap:wrap;row-gap:.25rem; }
   .counts { opacity:.8 }
   .chart-label { display:block;font-size:.75rem;color:#aaa;margin-bottom:.2rem; }
@@ -69,9 +93,16 @@
 </style>
 </head>
 <body>
-  <h1 class="mb-3">
-    RTCW / ET / Q3 Server List
-  </h1>
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <h1 class="mb-0">
+      RTCW / ET / Q3 Server List
+    </h1>
+    <div class="icon-link-group">
+      <a href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord"><i class="bi bi-discord"></i></a>
+      <a href="https://github.com/S4NDM4NN/q3master" class="icon-link" target="_blank" rel="noopener" title="Run your own — source on GitHub"><i class="bi bi-github"></i></a>
+      <a href="https://www.facebook.com/S4NDMoD/" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Facebook"><i class="bi bi-facebook"></i></a>
+    </div>
+  </div>
 
   <div class="mb-3 server-status">
     <a href="masters.html" class="back-link">Master server status</a>
@@ -79,6 +110,8 @@
     <a href="add-master.html" class="back-link">Add master servers to your own server</a>
     &middot;
     <a href="fix-ingame-browser.html" class="back-link">In-game browser empty? Fix it</a>
+    &middot;
+    <a href="contact.html" class="back-link">Contact</a>
   </div>
 
   <div class="mb-3" id="master-status">
@@ -150,14 +183,35 @@
     </div>
 
     <div class="toolbar-row toolbar-row-refine">
-      <label class="filter-label" for="version-filter">Version</label>
-      <select id="version-filter" class="form-select form-select-sm bg-dark text-light border-secondary">
-        <option value="all">All versions</option>
-      </select>
-      <label class="filter-label" for="mod-filter">Mod</label>
-      <select id="mod-filter" class="form-select form-select-sm bg-dark text-light border-secondary">
-        <option value="all">All mods</option>
-      </select>
+      <label class="filter-label">Version</label>
+      <div class="multi-select" id="version-filter">
+        <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+          <span class="ms-label">All versions</span><i class="bi bi-chevron-down ms-caret"></i>
+        </button>
+        <div class="dropdown-menu ms-menu p-2">
+          <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary ms-search mb-2" placeholder="Search versions...">
+          <div class="d-flex justify-content-between mb-2">
+            <a href="#" class="ms-select-all small">Select all</a>
+            <a href="#" class="ms-select-none small">Deselect all</a>
+          </div>
+          <div class="ms-options"></div>
+        </div>
+      </div>
+
+      <label class="filter-label">Mod</label>
+      <div class="multi-select" id="mod-filter">
+        <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+          <span class="ms-label">All mods</span><i class="bi bi-chevron-down ms-caret"></i>
+        </button>
+        <div class="dropdown-menu ms-menu p-2">
+          <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary ms-search mb-2" placeholder="Search mods...">
+          <div class="d-flex justify-content-between mb-2">
+            <a href="#" class="ms-select-all small">Select all</a>
+            <a href="#" class="ms-select-none small">Deselect all</a>
+          </div>
+          <div class="ms-options"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -263,31 +317,147 @@
       return isNaN(d) || d.getFullYear() < 2000;
     }
 
-    // Rebuilds the version/mod dropdowns from the *live* server list rather
-    // than a fixed table -- versions and mods both turned out to be
-    // open-ended, self-reported strings (see common.js), so what's
-    // filterable has to reflect what's actually out there right now,
-    // scoped to the selected game. Preserves the current selection if it's
-    // still valid for the new option set.
     function versionKey(s){ return s.protocol + '::' + getVersionLabel(s); }
+
+    // Minimal multi-select-with-search dropdown, backing both the version
+    // and mod filters. Search filters the visible checkbox list (not the
+    // underlying option set); "Select all" applies only to what's currently
+    // visible under that search, so you can e.g. search "1.4" then select
+    // all matching versions at once; "Deselect all" always clears the whole
+    // selection, search or not, since its job is "start over."
+    // setOptions() rebuilds the list from live data (see refreshFilterOptions)
+    // and intersects the current selection against the new key set, so a
+    // selection survives ordinary refreshes automatically -- and, since the
+    // very first setOptions() call runs after applyFiltersFromURL() has
+    // already primed the selection from the URL, that's also how a direct
+    // link restores its filters once real data exists to validate against.
+    function createMultiSelect(rootId, allLabel){
+      const $root = $('#' + rootId);
+      const $label = $root.find('.ms-label');
+      const $search = $root.find('.ms-search');
+      const $optionsEl = $root.find('.ms-options');
+
+      let selected = new Set();
+      let options = []; // [{key,label,count}]
+      let onChangeCb = null;
+
+      function visibleOptions(){
+        const q = ($search.val() || '').toLowerCase();
+        return q ? options.filter(o => o.label.toLowerCase().includes(q)) : options;
+      }
+
+      function render(){
+        $optionsEl.empty();
+        visibleOptions().forEach((o, i) => {
+          const id = rootId + '-opt-' + i;
+          const checked = selected.has(o.key) ? 'checked' : '';
+          $optionsEl.append(`
+            <div class="ms-option">
+              <label for="${id}">${o.label} <span class="ms-count">(${o.count})</span></label>
+              <input type="checkbox" value="${o.key}" id="${id}" ${checked}>
+            </div>
+          `);
+        });
+      }
+
+      function updateLabel(){
+        if (selected.size === 0) $label.text(allLabel);
+        else if (selected.size === 1) {
+          const o = options.find(o => o.key === [...selected][0]);
+          $label.text(o ? o.label : '1 selected');
+        } else {
+          $label.text(selected.size + ' selected');
+        }
+      }
+
+      $optionsEl.on('change', 'input[type=checkbox]', function(){
+        const key = $(this).val();
+        this.checked ? selected.add(key) : selected.delete(key);
+        updateLabel();
+        if (onChangeCb) onChangeCb();
+      });
+      $search.on('input', render);
+      $root.find('.ms-select-all').on('click', function(e){
+        e.preventDefault();
+        visibleOptions().forEach(o => selected.add(o.key));
+        render(); updateLabel();
+        if (onChangeCb) onChangeCb();
+      });
+      $root.find('.ms-select-none').on('click', function(e){
+        e.preventDefault();
+        selected.clear();
+        render(); updateLabel();
+        if (onChangeCb) onChangeCb();
+      });
+
+      return {
+        // Called on every render(), including ones triggered by this exact
+        // widget's own checkbox clicks (data hasn't changed, just the
+        // selection) -- rebuilding the checkbox DOM every time would tear
+        // down and recreate the whole list on every single click, flickering
+        // visibly if someone's checking several boxes in a row. Only
+        // actually rebuilds when the option set's content changed.
+        setOptions(opts){
+          const changed = JSON.stringify(opts) !== JSON.stringify(options);
+          options = opts;
+          const validKeys = new Set(opts.map(o => o.key));
+          selected = new Set([...selected].filter(k => validKeys.has(k)));
+          if (changed) render();
+          updateLabel();
+        },
+        getSelected(){ return [...selected]; },
+        setSelected(keys){ selected = new Set(keys); render(); updateLabel(); },
+        onChange(cb){ onChangeCb = cb; },
+      };
+    }
+
+    const versionFilter = createMultiSelect('version-filter', 'All versions');
+    const modFilter = createMultiSelect('mod-filter', 'All mods');
+
+    // Rebuilds the version/mod filter option lists from the *live* server
+    // list rather than a fixed table -- versions and mods both turned out
+    // to be open-ended, self-reported strings (see common.js), so what's
+    // filterable has to reflect what's actually out there right now,
+    // scoped to the selected game.
     function refreshFilterOptions(data){
       const game = $("input[name='game']:checked").val() || 'all';
       const known = data.filter(s => !isNewServer(s));
 
-      const verSel = $('#version-filter');
-      const prevVer = verSel.val() || 'all';
-      const verOpts = computeFilterOptions(known, game, versionKey,
-        s => game === 'all' ? `${getGameLabel(s)} ${getVersionLabel(s)}` : getVersionLabel(s));
-      verSel.empty().append('<option value="all">All versions</option>');
-      verOpts.forEach(o => verSel.append(`<option value="${o.key}">${o.label} (${o.count})</option>`));
-      verSel.val([...verSel.find('option')].some(o => o.value === prevVer) ? prevVer : 'all');
+      versionFilter.setOptions(computeFilterOptions(known, game, versionKey,
+        s => game === 'all' ? `${getGameLabel(s)} ${getVersionLabel(s)}` : getVersionLabel(s)));
+      modFilter.setOptions(computeFilterOptions(known, game, s => s.mod || null, s => s.mod || 'unknown'));
+    }
 
-      const modSel = $('#mod-filter');
-      const prevMod = modSel.val() || 'all';
-      const modOpts = computeFilterOptions(known, game, s => s.mod || null, s => s.mod || 'unknown');
-      modSel.empty().append('<option value="all">All mods</option>');
-      modOpts.forEach(o => modSel.append(`<option value="${o.key}">${o.label} (${o.count})</option>`));
-      modSel.val([...modSel.find('option')].some(o => o.value === prevMod) ? prevMod : 'all');
+    // Keeps the game/version/mod filters shareable as a direct link:
+    // reflects the current selection into the URL (query params only,
+    // replacing history rather than pushing so filter clicks don't spam the
+    // back button), and on page load reads them back to restore the view.
+    // Version/mod are comma-joined since either can now hold more than one
+    // value.
+    function updateFilterURL(){
+      const params = new URLSearchParams(location.search);
+      const game = $("input[name='game']:checked").val() || 'all';
+      const versions = versionFilter.getSelected();
+      const mods = modFilter.getSelected();
+
+      game === 'all' ? params.delete('game') : params.set('game', game);
+      versions.length ? params.set('version', versions.join(',')) : params.delete('version');
+      mods.length ? params.set('mod', mods.join(',')) : params.delete('mod');
+
+      const qs = params.toString();
+      history.replaceState(null, '', qs ? `?${qs}` : location.pathname);
+    }
+
+    function applyFiltersFromURL(){
+      const params = new URLSearchParams(location.search);
+      const game = params.get('game');
+      if (game && $(`#game-filter input[value="${game}"]`).length) {
+        $(`#game-filter input[value="${game}"]`).prop('checked', true);
+      }
+      const versionParam = params.get('version');
+      if (versionParam) versionFilter.setSelected(versionParam.split(','));
+      const modParam = params.get('mod');
+      if (modParam) modFilter.setSelected(modParam.split(','));
     }
 
     // Consider a server heartbeating if we saw a heartbeat recently
@@ -308,8 +478,8 @@
 
         const showOffline = $("#showOfflineToggle").is(":checked");
         const selectedGame = $("input[name='game']:checked").val();
-        const selectedVersion = $('#version-filter').val() || 'all';
-        const selectedMod = $('#mod-filter').val() || 'all';
+        const selectedVersions = versionFilter.getSelected();
+        const selectedMods = modFilter.getSelected();
         const q = ($('#server-filter').val()||'').toLowerCase();
 
         // Never show "new"
@@ -317,11 +487,14 @@
 
         // Apply game + version + mod + search filters (not showOffline yet
         // - counts below need the true online/offline split regardless of
-        // whether offline servers are actually being rendered as cards)
+        // whether offline servers are actually being rendered as cards).
+        // Empty version/mod selections mean "no filter" (same as the old
+        // "all" option); a non-empty selection now matches ANY of the
+        // chosen values.
         items = items
           .filter(s => selectedGame === "all" || getGameKey(s) === selectedGame)
-          .filter(s => selectedVersion === "all" || versionKey(s) === selectedVersion)
-          .filter(s => selectedMod === "all" || (s.mod||'') === selectedMod)
+          .filter(s => selectedVersions.length === 0 || selectedVersions.includes(versionKey(s)))
+          .filter(s => selectedMods.length === 0 || selectedMods.includes(s.mod||''))
           .filter(s =>
             (s.hostname||'').toLowerCase().includes(q) ||
             (s.map||'').toLowerCase().includes(q) ||
@@ -344,16 +517,22 @@
         // Sort: online + populated servers first (both already fine to
         // shift around live -- that's real player activity), then a
         // deterministic order for everyone else so the empty-server tail
-        // doesn't visibly reshuffle on every refresh. Sorting that tail by
-        // hostname (not raw address) reads as the "standard" server-browser
-        // order players expect; address is only a final tiebreaker for the
-        // rare case of a blank/duplicate hostname.
-        const plainHostname = s => (s.hostname||'').replace(/\^[^^]/g, '').toLowerCase();
+        // doesn't visibly reshuffle on every refresh. This used to sort
+        // that tail by hostname, but some servers embed live-changing
+        // content directly in their hostname (e.g. a timestamp -- see the
+        // "fpsclasico" case in clone detection), which made them -- and
+        // anything alphabetically near them -- visibly bounce around on
+        // every refresh as that substring changed. first_seen is a fixed
+        // timestamp assigned once when a server is first discovered, so it
+        // can't do that; address is only a final tiebreaker for the rare
+        // case of two servers sharing the same first_seen instant (e.g.
+        // both loaded from a bulk seed).
         items.sort((a,b)=>{
           if (a.online !== b.online) return a.online ? -1 : 1;
           if ((b.player_count|0)!==(a.player_count|0)) return (b.player_count|0)-(a.player_count|0);
-          const hn = plainHostname(a).localeCompare(plainHostname(b));
-          if (hn !== 0) return hn;
+          const fa = new Date(a.first_seen).getTime() || 0;
+          const fb = new Date(b.first_seen).getTime() || 0;
+          if (fa !== fb) return fa - fb;
           return (a.address||'').localeCompare(b.address||'');
         });
 
@@ -488,9 +667,10 @@
     $('#game-filter input').off('change').on('change', function(){
       refreshNow();
       refreshNetworkHistory();
+      updateFilterURL();
     });
-    $('#version-filter').off('change').on('change', refreshNow);
-    $('#mod-filter').off('change').on('change', refreshNow);
+    versionFilter.onChange(function(){ refreshNow(); updateFilterURL(); });
+    modFilter.onChange(function(){ refreshNow(); updateFilterURL(); });
     $('#showOfflineToggle').off('change').on('change', refreshNow);
 
     // search box: debounced re-render
@@ -506,6 +686,7 @@
       });
     }
 
+    applyFiltersFromURL();
     setInterval(refreshServers, 10000);
     refreshServers();
     setInterval(refreshMasterStatus, 60000);
