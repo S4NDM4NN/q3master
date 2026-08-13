@@ -215,12 +215,46 @@ function q3ColorForCode(ch) {
 function parseNameColors(name) {
   let out = '', color = 'white';
   for (let i = 0; i < name.length; i++) {
-    if (name[i] === '^' && i + 1 < name.length && name[i + 1] !== '^') {
+    if (name[i] === '^' && i + 1 < name.length) {
+      if (name[i + 1] === '^') {
+        // "^^XY": the real client shows this as a literal '^' (the first
+        // caret isn't a valid escape target, since the next char is
+        // another caret) followed by whatever the second caret's pair
+        // produces -- X becomes an invisible color change and Y then just
+        // prints as an ordinary character. In practice this whole 4-char
+        // unit reads as "a literal caret, plus one stray leftover
+        // character" that was never meant to be part of the display --
+        // widespread across real server names (e.g. "^^77Q3RETRO...",
+        // "^^44GENESIS...", the "fpsclasico" network's "^^&&FreeFUn...")
+        // wherever an operator apparently discovered ^^ as "how to show a
+        // literal caret" without realizing it leaves this artifact behind.
+        // So it's collapsed to just the literal caret here -- X still
+        // updates the running color (matching what the real client would
+        // tint everything after it), but neither X nor Y is drawn.
+        out += `<span style="color:${color}">^</span>`;
+        i++; // second '^'
+        if (i + 1 < name.length) { color = q3ColorForCode(name[i + 1]); i++; } // X
+        if (i + 1 < name.length) { i++; } // Y, dropped
+        continue;
+      }
       color = q3ColorForCode(name[++i]); continue;
     }
     out += `<span style="color:${color}">${name[i]}</span>`;
   }
   return out || '&nbsp;';
+}
+
+// Renders one real-player name, flagging it if it's in the server's
+// suspected_bots list (see ServerEntry.SuspectedBots -- a name that's
+// stayed connected suspiciously long without ever leaving, heuristically
+// suggesting it's a spoofed fake-player entry rather than a real human).
+// Matching is on the raw name string, same as what the server reported.
+function formatPlayerName(name, suspectedBots) {
+  const flagged = (suspectedBots || []).includes(name);
+  const warn = flagged
+    ? ' <i class="bi bi-exclamation-triangle-fill suspected-bot-icon" title="Suspected bot: connected continuously for an unusually long time without ever leaving"></i>'
+    : '';
+  return parseNameColors(name) + warn;
 }
 
 // Game taxonomy. Several protocol numbers can belong to the same game

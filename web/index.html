@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script src="common.js"></script>
 <style>
-  body { background:#111;color:#ddd;font-family:monospace;padding:2rem;max-width:1100px;margin:0 auto; }
+  body { background:#111;color:#ddd;font-family:monospace;padding:2rem;max-width:820px;margin:0 auto; }
   .q3name span { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
   .card { background:#1b1b1b;border:1px solid #333;margin-bottom:1rem; overflow:hidden; }
   .card-header { background:#222;padding:1rem; }
@@ -28,24 +28,39 @@
   .offline-dot { background:#f44336; }
   .server-status { font-size:.85rem;color:#ccc; }
   .heartbeat-icon { color:#0dcaf0; }
+  .suspected-bot-icon { color:#f0ad4e;font-size:.8rem; }
   .clipboard-icon { cursor:pointer;font-size:1rem;color:#ccc;transition:color .2s; }
   .clipboard-icon:hover { color:#fff; }
   .info-toggle { cursor:pointer;color:#66d9ef;font-size:1.2rem;transition:color .2s ease; }
   .info-toggle:hover { color:#0dcaf0; }
   .back-link { color:#66d9ef;text-decoration:none; }
   .back-link:hover { color:#0dcaf0;text-decoration:underline; }
-  .icon-link-group { display:flex;gap:.9rem;flex-shrink:0;margin-top:.3rem; }
-  .icon-link { color:#999;font-size:1.35rem;transition:color .2s ease; }
+  .icon-link-group { display:flex;gap:.9rem;flex-shrink:0;align-items:center; }
+  .icon-link { color:#999;font-size:1.1rem;transition:color .2s ease; }
   .icon-link:hover { color:#66d9ef; }
   .toolbar { display:flex;flex-direction:column;gap:.65rem;margin-bottom:1rem; }
   .toolbar-row { display:flex;flex-wrap:wrap;gap:.75rem;align-items:center; }
-  .toolbar-row-refine { row-gap:.4rem; }
-  .filter-label { font-size:.8rem;color:#999;white-space:nowrap; }
-  .multi-select { flex:1 1 160px;max-width:220px; }
+  .toolbar-row-refine { align-items:flex-start;row-gap:.75rem; }
+  .filter-group { display:flex;flex-direction:column;gap:.3rem; }
+  .filter-label { font-size:.75rem;color:#999;text-transform:uppercase;letter-spacing:.03em; }
+  .multi-select, .single-select { width:200px; }
+  .ss-options { display:flex;flex-direction:column; }
+  .ss-option {
+    display:block;width:100%;text-align:left;background:none;border:none;padding:.4rem .5rem;
+    color:#ddd;font-family:inherit;font-size:.9rem;border-radius:4px;cursor:pointer;
+  }
+  .ss-option:hover { background:#262626; }
+  .ss-option.active { background:#0dcaf022;color:#0dcaf0; }
+  .ss-option-warn { color:#f0ad4e; }
+  .ss-option-warn.active { background:#f0ad4e22;color:#f0ad4e; }
   .ms-toggle { width:100%;display:flex;justify-content:space-between;align-items:center;gap:.5rem; }
   .ms-toggle .ms-label { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
   .ms-caret { font-size:.7rem;opacity:.7;flex-shrink:0; }
-  .ms-menu { background:#1b1b1b;border:1px solid #333;min-width:260px;max-width:320px;max-height:360px;overflow-y:auto; }
+  /* Matches the server cards' width: body's max-width (820px) minus its
+     2rem padding on each side, same formula used for body itself, so it
+     tracks that value if it ever changes; the vw term is the fallback for
+     viewports narrower than 820px. */
+  .ms-menu { background:#1b1b1b;border:1px solid #333;width:min(calc(820px - 4rem), calc(100vw - 4rem));max-height:360px;overflow-y:auto; }
   .ms-select-all, .ms-select-none { color:#66d9ef;text-decoration:none; }
   .ms-select-all:hover, .ms-select-none:hover { color:#0dcaf0;text-decoration:underline; }
   .ms-options:empty::after { content:"No matches."; color:#888;font-size:.85rem; }
@@ -63,7 +78,6 @@
   .ms-option input[type=checkbox]:focus {
     border-color:#66d9ef;box-shadow:0 0 0 .2rem rgba(13,202,240,.35);
   }
-  #game-filter { flex-wrap:wrap;row-gap:.25rem; }
   .counts { opacity:.8 }
   .chart-label { display:block;font-size:.75rem;color:#aaa;margin-bottom:.2rem; }
   .history-chart { display:block; }
@@ -78,40 +92,40 @@
   .source-badge { display:inline-block;background:#222;border:1px solid #333;border-radius:4px;padding:.1rem .5rem;font-size:.8rem;margin:.15rem .25rem .15rem 0;color:#ccc; }
   .source-badge-heartbeat { background:#0dcaf022;border-color:#0dcaf0;color:#0dcaf0; }
 
+  /* Own class instead of Bootstrap's gap-4 utility -- that utility is
+     !important in Bootstrap 5, so it couldn't be tuned down for mobile
+     without a specificity fight. flex-wrap here means Map drops to its own
+     line if Mod doesn't leave room, with a modest row-gap rather than
+     gap-4's much larger 1.5rem. */
+  .mod-map-row { display:flex;flex-wrap:wrap;gap:.4rem 1.5rem; }
+
   /* --- Mobile layout hardening --- */
   @media (max-width: 768px) {
-    .card-header { display:flex; flex-wrap:wrap; align-items:flex-start; gap:.5rem; }
-    .card-header > div:last-child {
-      width:100% !important;
-      margin-top:.25rem;
-      text-align:left;
-      min-width:0 !important;
-    }
-    .card-header .d-flex.gap-4 { flex-wrap:wrap; gap:.5rem 1rem; }
+    .mod-map-row { flex-direction:column; }
     .player-grid { grid-template-columns:1fr !important; }
   }
 </style>
 </head>
 <body>
-  <div class="d-flex justify-content-between align-items-start mb-3">
-    <h1 class="mb-0">
-      RTCW / ET / Q3 Server List
-    </h1>
+  <h1 class="mb-3">
+    RTCW / ET / Q3 Server List
+  </h1>
+
+  <div class="mb-3 server-status d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <a href="masters.html" class="back-link">Master Servers</a>
+      &middot;
+      <a href="add-master.html" class="back-link">Add your server</a>
+      &middot;
+      <a href="fix-ingame-browser.html" class="back-link">Fix in-game browser</a>
+      &middot;
+      <a href="contact.html" class="back-link">Contact</a>
+    </div>
     <div class="icon-link-group">
       <a href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord"><i class="bi bi-discord"></i></a>
       <a href="https://github.com/S4NDM4NN/q3master" class="icon-link" target="_blank" rel="noopener" title="Run your own — source on GitHub"><i class="bi bi-github"></i></a>
       <a href="https://www.facebook.com/S4NDMoD/" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Facebook"><i class="bi bi-facebook"></i></a>
     </div>
-  </div>
-
-  <div class="mb-3 server-status">
-    <a href="masters.html" class="back-link">Master server status</a>
-    &middot;
-    <a href="add-master.html" class="back-link">Add master servers to your own server</a>
-    &middot;
-    <a href="fix-ingame-browser.html" class="back-link">In-game browser empty? Fix it</a>
-    &middot;
-    <a href="contact.html" class="back-link">Contact</a>
   </div>
 
   <div class="mb-3" id="master-status">
@@ -132,7 +146,7 @@
   </div>
 
   <div class="mb-3 server-status">
-    Running a server? Add this master so it shows up here:
+    Running a server? <a href="add-master.html" class="back-link">Add this master</a> to show up here:
     <code id="master-cvar">set sv_master5 wolfmaster.s4ndmod.com</code>
     <i class="bi bi-clipboard clipboard-icon" data-ip="set sv_master5 wolfmaster.s4ndmod.com" title="Copy to clipboard"></i>
   </div>
@@ -160,56 +174,57 @@
       <div id="server-counts" class="fs-6 text-light-emphasis counts ms-auto"></div>
     </div>
 
-    <div class="toolbar-row">
-      <div class="btn-group" role="group" id="game-filter">
-        <input type="radio" class="btn-check" name="game" id="filter-all" value="all" autocomplete="off" checked>
-        <label class="btn btn-outline-light" for="filter-all">All</label>
-
-        <input type="radio" class="btn-check" name="game" id="filter-rtcw" value="rtcw" autocomplete="off">
-        <label class="btn btn-outline-light" for="filter-rtcw">RTCW</label>
-
-        <input type="radio" class="btn-check" name="game" id="filter-et" value="et" autocomplete="off">
-        <label class="btn btn-outline-light" for="filter-et">ET</label>
-
-        <input type="radio" class="btn-check" name="game" id="filter-q3a" value="q3a" autocomplete="off">
-        <label class="btn btn-outline-light" for="filter-q3a">Quake 3 Arena</label>
-
-        <input type="radio" class="btn-check" name="game" id="filter-oa" value="oa" autocomplete="off">
-        <label class="btn btn-outline-light" for="filter-oa">OpenArena</label>
-
-        <input type="radio" class="btn-check" name="game" id="filter-unknown" value="unknown" autocomplete="off">
-        <label class="btn btn-outline-warning" for="filter-unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</label>
-      </div>
-    </div>
-
     <div class="toolbar-row toolbar-row-refine">
-      <label class="filter-label">Version</label>
-      <div class="multi-select" id="version-filter">
-        <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-          <span class="ms-label">All versions</span><i class="bi bi-chevron-down ms-caret"></i>
-        </button>
-        <div class="dropdown-menu ms-menu p-2">
-          <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary ms-search mb-2" placeholder="Search versions...">
-          <div class="d-flex justify-content-between mb-2">
-            <a href="#" class="ms-select-all small">Select all</a>
-            <a href="#" class="ms-select-none small">Deselect all</a>
+      <div class="filter-group">
+        <label class="filter-label">Game</label>
+        <div class="single-select" id="game-filter">
+          <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <span class="ms-label">All</span><i class="bi bi-chevron-down ms-caret"></i>
+          </button>
+          <div class="dropdown-menu ms-menu p-2">
+            <div class="ss-options">
+              <button type="button" class="ss-option" data-value="all">All</button>
+              <button type="button" class="ss-option" data-value="rtcw">RTCW</button>
+              <button type="button" class="ss-option" data-value="et">ET</button>
+              <button type="button" class="ss-option" data-value="q3a">Quake 3 Arena</button>
+              <button type="button" class="ss-option" data-value="oa">OpenArena</button>
+              <button type="button" class="ss-option ss-option-warn" data-value="unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</button>
+            </div>
           </div>
-          <div class="ms-options"></div>
         </div>
       </div>
 
-      <label class="filter-label">Mod</label>
-      <div class="multi-select" id="mod-filter">
-        <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-          <span class="ms-label">All mods</span><i class="bi bi-chevron-down ms-caret"></i>
-        </button>
-        <div class="dropdown-menu ms-menu p-2">
-          <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary ms-search mb-2" placeholder="Search mods...">
-          <div class="d-flex justify-content-between mb-2">
-            <a href="#" class="ms-select-all small">Select all</a>
-            <a href="#" class="ms-select-none small">Deselect all</a>
+      <div class="filter-group">
+        <label class="filter-label">Version</label>
+        <div class="multi-select" id="version-filter">
+          <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+            <span class="ms-label">All versions</span><i class="bi bi-chevron-down ms-caret"></i>
+          </button>
+          <div class="dropdown-menu ms-menu p-2">
+            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary ms-search mb-2" placeholder="Search versions...">
+            <div class="d-flex justify-content-between mb-2">
+              <a href="#" class="ms-select-all small">Select all</a>
+              <a href="#" class="ms-select-none small">Deselect all</a>
+            </div>
+            <div class="ms-options"></div>
           </div>
-          <div class="ms-options"></div>
+        </div>
+      </div>
+
+      <div class="filter-group">
+        <label class="filter-label">Mod</label>
+        <div class="multi-select" id="mod-filter">
+          <button type="button" class="btn btn-outline-light btn-sm ms-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+            <span class="ms-label">All mods</span><i class="bi bi-chevron-down ms-caret"></i>
+          </button>
+          <div class="dropdown-menu ms-menu p-2">
+            <input type="text" class="form-control form-control-sm bg-dark text-light border-secondary ms-search mb-2" placeholder="Search mods...">
+            <div class="d-flex justify-content-between mb-2">
+              <a href="#" class="ms-select-all small">Select all</a>
+              <a href="#" class="ms-select-none small">Deselect all</a>
+            </div>
+            <div class="ms-options"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -285,7 +300,7 @@
     }
 
     function refreshNetworkHistory(){
-      const game = $("input[name='game']:checked").val() || 'all';
+      const game = gameFilter.getSelected();
       const suffix = game === 'all' ? '' : ' — ' + gameFilterLabel(game);
       $('#network-players-label').text('Total real players (7d)' + suffix);
       $('#network-servers-label').text('Online servers (7d)' + suffix);
@@ -411,6 +426,45 @@
       };
     }
 
+    // Single-choice dropdown for the game filter -- same visual shell
+    // (.ms-toggle/.ms-menu) as createMultiSelect, so all three filters read
+    // as matching widgets, but no search/select-all machinery: with only 6
+    // static, always-known options and exactly one active at a time, none
+    // of that applies. Options are fixed in the HTML (data-value + text),
+    // not rebuilt from live data like version/mod.
+    function createSingleSelect(rootId, labels){
+      const $root = $('#' + rootId);
+      const $label = $root.find('.ms-label');
+      const $options = $root.find('.ss-option');
+
+      let selected = 'all';
+      let onChangeCb = null;
+
+      function render(){
+        $label.text(labels[selected] || selected);
+        $options.each(function(){
+          $(this).toggleClass('active', $(this).data('value') === selected);
+        });
+      }
+
+      $options.on('click', function(){
+        selected = $(this).data('value');
+        render();
+        if (onChangeCb) onChangeCb();
+      });
+
+      render();
+
+      return {
+        getSelected(){ return selected; },
+        setSelected(value){ selected = value; render(); },
+        onChange(cb){ onChangeCb = cb; },
+      };
+    }
+
+    const gameFilter = createSingleSelect('game-filter', {
+      all: 'All', rtcw: 'RTCW', et: 'ET', q3a: 'Quake 3 Arena', oa: 'OpenArena', unknown: 'Unknown',
+    });
     const versionFilter = createMultiSelect('version-filter', 'All versions');
     const modFilter = createMultiSelect('mod-filter', 'All mods');
 
@@ -420,7 +474,7 @@
     // filterable has to reflect what's actually out there right now,
     // scoped to the selected game.
     function refreshFilterOptions(data){
-      const game = $("input[name='game']:checked").val() || 'all';
+      const game = gameFilter.getSelected();
       const known = data.filter(s => !isNewServer(s));
 
       versionFilter.setOptions(computeFilterOptions(known, game, versionKey,
@@ -436,7 +490,7 @@
     // value.
     function updateFilterURL(){
       const params = new URLSearchParams(location.search);
-      const game = $("input[name='game']:checked").val() || 'all';
+      const game = gameFilter.getSelected();
       const versions = versionFilter.getSelected();
       const mods = modFilter.getSelected();
 
@@ -451,8 +505,8 @@
     function applyFiltersFromURL(){
       const params = new URLSearchParams(location.search);
       const game = params.get('game');
-      if (game && $(`#game-filter input[value="${game}"]`).length) {
-        $(`#game-filter input[value="${game}"]`).prop('checked', true);
+      if (game && $(`#game-filter .ss-option[data-value="${game}"]`).length) {
+        gameFilter.setSelected(game);
       }
       const versionParam = params.get('version');
       if (versionParam) versionFilter.setSelected(versionParam.split(','));
@@ -477,7 +531,7 @@
         refreshFilterOptions(data);
 
         const showOffline = $("#showOfflineToggle").is(":checked");
-        const selectedGame = $("input[name='game']:checked").val();
+        const selectedGame = gameFilter.getSelected();
         const selectedVersions = versionFilter.getSelected();
         const selectedMods = modFilter.getSelected();
         const q = ($('#server-filter').val()||'').toLowerCase();
@@ -537,7 +591,7 @@
         });
 
         items.forEach((server, idx)=>{
-          const realPlayers = (server.players||[]).map(p=>`<div class="q3name">${parseNameColors(p)}</div>`).join('');
+          const realPlayers = (server.players||[]).map(p=>`<div class="q3name">${formatPlayerName(p, server.suspected_bots)}</div>`).join('');
           const botPlayers  = (server.bots||[]).map(p=>`<div class="q3name"><i class="bi bi-robot me-1"></i>${parseNameColors(p)}</div>`).join('');
           const hasBots = (server.bots||[]).length>0;
           const hostname = parseNameColors(server.hostname||'Unnamed Server');
@@ -555,44 +609,49 @@
                 data-address="${(server.address||'').toLowerCase()}"
                 data-version="${(server.version||'').toLowerCase()}">
               <div class="card">
-                <div class="card-header d-flex align-items-start justify-content-between">
-                  <div class="flex-grow-1">
-                    <div class="q3name fs-5">
+                <div class="card-header">
+                  <div class="d-flex align-items-start justify-content-between gap-2">
+                    <div class="q3name">
                       <span class="badge bg-secondary me-1">${getGameLabel(server)}</span>
-                      <span class="badge bg-dark border border-secondary me-2">${getVersionLabel(server)}</span>
-                      ${hostname}
+                      <span class="badge bg-dark border border-secondary">${getVersionLabel(server)}</span>
                     </div>
-                    <div class="address d-flex align-items-center">
-                      <code id="ip-${idx}" class="me-2">${server.address}</code>
-                      <i class="bi bi-clipboard clipboard-icon" data-ip="${server.address}" title="Copy to clipboard"></i>
-                    </div>
-                    <div class="d-flex gap-4 mt-2">
-                      <div><span class="text-light-emphasis">Mod:</span> <span class="text-info">${server.mod||'unknown'}</span></div>
-                      <div><span class="text-light-emphasis">Map:</span> <span class="text-warning">${server.map||'unknown'}</span></div>
+                    <div class="text-end flex-shrink-0">
+                      <span class="player-count d-none d-md-inline">
+                        ${(server.player_count??0)}/${server.max_players??0} players
+                        ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
+                      </span>
+                      <span class="server-status ms-md-2" title="${label} — last seen: ${formatLastSeen(server.last_seen)}">
+                        <span class="status-dot ${dot}"></span>
+                        ${hb ? `<i class="bi bi-broadcast heartbeat-icon" title="Last heartbeat: ${formatLastSeen(server.last_heartbeat)}"></i>` : ''}
+                      </span>
                     </div>
                   </div>
 
-                  <div class="text-end ms-3" style="min-width: 160px;">
-                    <div class="server-status mb-1">
-                      <span class="status-dot ${dot}"></span>${label}
-                      ${hb ? '<i class="bi bi-broadcast heartbeat-icon ms-1" title="Direct heartbeat seen recently"></i>' : ''}
-                    </div>
-                    <div class="player-count">
+                  <div class="q3name fs-5 hostname-line mt-1">${hostname}</div>
+
+                  <div class="address d-flex align-items-center mt-1">
+                    <code id="ip-${idx}" class="me-2">${server.address}</code>
+                    <i class="bi bi-clipboard clipboard-icon" data-ip="${server.address}" title="Copy to clipboard"></i>
+                  </div>
+
+                  <div class="mod-map-row mt-1">
+                    <span><span class="text-light-emphasis">Mod:</span> <span class="text-info">${server.mod||'unknown'}</span></span>
+                    <span><span class="text-light-emphasis">Map:</span> <span class="text-warning">${server.map||'unknown'}</span></span>
+                  </div>
+
+                  <div class="text-end mt-2">
+                    <div class="player-count d-md-none mb-1">
                       ${(server.player_count??0)}/${server.max_players??0} players
                       ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
                     </div>
-                    <div class="text-end" style="font-size:.85rem;color:${server.online?'#ccc':'#f0ad4e'};">
-                      Last seen: ${formatLastSeen(server.last_seen)}
-                    </div>
-                    <div class="text-end mt-2">
-                      <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page" class="me-3"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
-                      <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
-                    </div>
+                    <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page" class="me-3"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
+                    <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
                   </div>
                 </div>
 
                 <div id="${collapseId}" class="collapse card-body">
                   <div class="info-grid">
+                    <div><span class="info-label">Refreshed</span><span style="color:${server.online?'inherit':'#f0ad4e'}">${formatLastSeen(server.last_seen)}</span></div>
                     <div><span class="info-label">Gametype</span>${server.gametype||'<em>unknown</em>'}</div>
                     <div><span class="info-label">Version</span>${server.version||'<em>unknown</em>'}</div>
                     <div><span class="info-label">Missed Polls</span><span style="color:${(server.missed_polls||0)>0?'#f0ad4e':'inherit'}">${server.missed_polls??0}</span></div>
@@ -664,7 +723,7 @@
     // game + version + mod + showOffline: instant re-render. render()
     // rebuilds the version/mod dropdowns itself (scoped to whatever game is
     // now selected), so no separate refresh call is needed here.
-    $('#game-filter input').off('change').on('change', function(){
+    gameFilter.onChange(function(){
       refreshNow();
       refreshNetworkHistory();
       updateFilterURL();

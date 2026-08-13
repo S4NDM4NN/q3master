@@ -65,6 +65,14 @@ type ServerEntry struct {
     // servers with no players to fingerprint by roster.
     MatchTimeSec int  `json:"match_time_sec,omitempty"`
     HasMatchTime bool `json:"has_match_time,omitempty"`
+    // SuspectedBots lists names from Players (not Bots -- those already
+    // self-report honestly) that have been continuously connected past
+    // suspectedBotSessionThreshold (see playertrack.go) without ever
+    // dropping out of the roster -- a pattern consistent with a spoofed
+    // fake-player entry rather than a real, eventually-disconnecting
+    // human. A heuristic, not a certainty: doesn't catch every spoofed
+    // bot, and (rarely) could flag a genuinely very-long AFK session.
+    SuspectedBots []string `json:"suspected_bots,omitempty"`
 }
 
 // in-memory store and configuration
