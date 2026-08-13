@@ -107,7 +107,7 @@ func refreshFromMaster(record func(host string, up bool)) {
     for _, m := range knownMasters {
         hostUp := false
         for _, proto := range protocols {
-            if queryMaster(m.Host, proto) {
+            if queryMaster(m.Host, m.Label, proto) {
                 hostUp = true
             }
         }
@@ -122,9 +122,10 @@ func refreshFromMaster(record func(host string, up bool)) {
 }
 
 // queryMaster sends a getservers request to one master for one protocol,
-// adding any newly-discovered addresses to serverList, and reports whether
-// the master responded at all.
-func queryMaster(host, proto string) bool {
+// adding any newly-discovered addresses to serverList (and recording label
+// as a source on every address it reports, new or already-known -- see
+// ServerEntry.Sources), and reports whether the master responded at all.
+func queryMaster(host, label, proto string) bool {
     conn, err := net.Dial("udp", host)
     if err != nil {
         fmt.Printf("Error connecting to master %s: %v\n", host, err)
@@ -177,17 +178,23 @@ func queryMaster(host, proto string) bool {
             addr := fmt.Sprintf("%s:%d", ip.String(), port)
 
             serverMutex.Lock()
-            if _, exists := serverList[addr]; !exists {
-                serverList[addr] = &ServerEntry{
+            entry, exists := serverList[addr]
+            if !exists {
+                entry = &ServerEntry{
                     Address:     addr,
                     Protocol:    parseInt(proto),
                     State:       StateNew,
                     FirstSeen:   time.Now(),
                     LastAttempt: time.Time{},
                 }
+                serverList[addr] = entry
                 // Queue a poll instead of spawning unbounded goroutines
                 EnqueuePoll(addr)
             }
+            if entry.Sources == nil {
+                entry.Sources = make(map[string]time.Time)
+            }
+            entry.Sources[label] = time.Now()
             serverMutex.Unlock()
         }
     }

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Adding Master Servers — RTCW / ET Server List</title>
+  <title>Adding Master Servers — RTCW / ET / Q3 Server List</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
@@ -27,6 +27,8 @@
   .callout-info { border-color:#0dcaf0;background:#132a30;color:#c9eef5; }
   .callout-info a { color:#9cdcfe; }
   .callout-warn { border-color:#f0ad4e;background:#2a2416;color:#e8d8b8; }
+  .game-tabs .nav-link { color:#aaa;background:transparent;border-color:#333; }
+  .game-tabs .nav-link.active { color:#111;background:#9cdcfe;border-color:#9cdcfe; }
 </style>
 </head>
 <body>
@@ -45,80 +47,143 @@
   </div>
 
   <p class="server-status mb-4">
-    RTCW/ET-engine servers report themselves to "master" servers, which is how tools like this one
-    (and in-game server browsers) find them. The official id Software master
-    (<code>wolfmaster.idsoftware.com</code>) has been unreliable, so registering with more than one
-    master keeps your server discoverable even when any single one is down &mdash; see current
-    <a href="masters.html" class="back-link">live status of each master</a>.
+    idTech3-family servers (RTCW, Enemy Territory, Quake 3 Arena, OpenArena) report themselves to
+    "master" servers, which is how tools like this one (and in-game server browsers) find them.
+    Official id Software masters have been unreliable, so registering with more than one master keeps
+    your server discoverable even when any single one is down &mdash; see current
+    <a href="masters.html" class="back-link">live status of each master</a>. Pick the tab for your game
+    below.
   </p>
 
-  <div class="card">
-    <div class="card-header">Add this to your server config</div>
-    <div class="card-body">
-      <p class="server-status">
-        Paste this into your server config (e.g. <code>server.cfg</code>) to register with every master
-        worth registering with right now: the official one (in case it comes back), the iortcw project's
-        own master, the two community masters we found still active while the official one is down, and
-        this project's own master last.
-      </p>
-      <pre id="config-block">set sv_master1 "wolfmaster.idsoftware.com"
+  <ul class="nav nav-tabs game-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#game-rtcwet" type="button">RTCW / ET</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#game-q3" type="button">Quake 3 Arena / OpenArena</button></li>
+  </ul>
+
+  <div class="tab-content">
+    <div class="tab-pane fade show active" id="game-rtcwet">
+      <div class="card">
+        <div class="card-header">Add this to your server config</div>
+        <div class="card-body">
+          <p class="server-status">
+            Paste this into your server config (e.g. <code>server.cfg</code>) to register with every
+            master worth registering with right now: the official one (in case it comes back), the
+            iortcw project's own master, the two community masters we found still active while the
+            official one is down, and this project's own master last.
+          </p>
+          <pre id="config-rtcwet">set sv_master1 "wolfmaster.idsoftware.com"
 set sv_master2 "master.iortcw.org"
 set sv_master3 "etmaster.net"
 set sv_master4 "dpmaster.deathmask.net"
 set sv_master5 "wolfmaster.s4ndmod.com"</pre>
-      <div class="server-status">
-        <i class="bi bi-clipboard clipboard-icon" id="copy-config" title="Copy to clipboard"></i>
-        <span id="copy-feedback"></span>
+          <div class="server-status">
+            <i class="bi bi-clipboard clipboard-icon" data-copy="config-rtcwet" title="Copy to clipboard"></i>
+            <span class="copy-feedback"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Why these four</div>
+        <div class="card-body">
+          <table>
+            <tr><th>Master</th><th>Why</th></tr>
+            <tr>
+              <td><code>master.iortcw.org</code></td>
+              <td>Only pre-set for servers actually running the iortcw engine &mdash; most RTCW/ET
+                servers aren't, so this is a master you need to add yourself, not one already covering
+                you. Alive right now.</td>
+            </tr>
+            <tr>
+              <td><code>etmaster.net</code></td>
+              <td>Community-run replacement for the unreliable official ET master. Currently the
+                largest source of active ET servers we've found.</td>
+            </tr>
+            <tr>
+              <td><code>dpmaster.deathmask.net</code></td>
+              <td>Long-running generic idTech3 master, widely used by RTCW servers (and Quake 3 Arena
+                too).</td>
+            </tr>
+            <tr>
+              <td><code>wolfmaster.s4ndmod.com</code></td>
+              <td>This project's own master &mdash; adding your server here is what makes it show up on
+                <a href="index.html" class="back-link">the list itself</a>.</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="callout callout-warn">
+        Only <code>sv_master1</code> has a default that applies broadly (the official master above).
+        <code>sv_master2</code>'s <code>master.iortcw.org</code> default is iortcw-specific &mdash; if
+        you're not running iortcw, it's not covering you, so slots 2&ndash;5 are effectively all "free."
+        The config above sets all five explicitly anyway, so nothing depends on a default you can't see
+        just by reading your own config file.
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="game-q3">
+      <div class="card">
+        <div class="card-header">Add this to your server config</div>
+        <div class="card-body">
+          <p class="server-status">
+            Same <code>sv_master1</code>&ndash;<code>sv_master5</code> cvars, same idea, different
+            masters &mdash; these are the ones we found with real Quake 3 Arena / OpenArena populations:
+          </p>
+          <pre id="config-q3">set sv_master1 "master.ioquake3.org"
+set sv_master2 "dpmaster.deathmask.net"
+set sv_master3 "master.maverickservers.com"
+set sv_master4 "master0.excessiveplus.net"
+set sv_master5 "wolfmaster.s4ndmod.com"</pre>
+          <div class="server-status">
+            <i class="bi bi-clipboard clipboard-icon" data-copy="config-q3" title="Copy to clipboard"></i>
+            <span class="copy-feedback"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Why these four</div>
+        <div class="card-body">
+          <table>
+            <tr><th>Master</th><th>Why</th></tr>
+            <tr>
+              <td><code>master.ioquake3.org</code></td>
+              <td>The ioquake3 project's own master &mdash; by far the largest source we found (840
+                servers on Quake 3 Arena's protocol alone).</td>
+            </tr>
+            <tr>
+              <td><code>dpmaster.deathmask.net</code></td>
+              <td>Long-running generic idTech3 master. Also serves RTCW.</td>
+            </tr>
+            <tr>
+              <td><code>master.maverickservers.com</code></td>
+              <td>Community Quake 3 Arena master with a sizeable population of its own.</td>
+            </tr>
+            <tr>
+              <td><code>master0.excessiveplus.net</code></td>
+              <td>Another active community Quake 3 Arena master.</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="callout callout-warn">
+        We haven't confirmed a broadly-applicable engine default the way <code>sv_master1</code> is for
+        RTCW/ET (id Software's original Quake 3 Arena master has been dead for a long time, and modern
+        source ports vary) &mdash; so treat all five slots above as worth setting explicitly rather than
+        assuming any are already covered.
       </div>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-header">Why these four</div>
-    <div class="card-body">
-      <table>
-        <tr><th>Master</th><th>Why</th></tr>
-        <tr>
-          <td><code>master.iortcw.org</code></td>
-          <td>Only pre-set for servers actually running the iortcw engine &mdash; most RTCW/ET servers
-            aren't, so this is a master you need to add yourself, not one already covering you. Alive
-            right now.</td>
-        </tr>
-        <tr>
-          <td><code>etmaster.net</code></td>
-          <td>Community-run replacement for the unreliable official ET master. Currently the largest
-            source of active ET servers we've found.</td>
-        </tr>
-        <tr>
-          <td><code>dpmaster.deathmask.net</code></td>
-          <td>Long-running generic idTech3 master, widely used by RTCW servers.</td>
-        </tr>
-        <tr>
-          <td><code>wolfmaster.s4ndmod.com</code></td>
-          <td>This project's own master &mdash; adding your server here is what makes it show up on
-            <a href="index.html" class="back-link">the list itself</a>.</td>
-        </tr>
-      </table>
-      <p class="server-status mb-0 mt-2">
-        Check <a href="masters.html" class="back-link">current status of all of these</a> (including the
-        official one, in case it ever comes back).
-      </p>
-    </div>
-  </div>
-
-  <div class="callout callout-warn">
-    Only <code>sv_master1</code> has a default that applies broadly (the official master above).
-    <code>sv_master2</code>'s <code>master.iortcw.org</code> default is iortcw-specific &mdash; if
-    you're not running iortcw, it's not covering you, so slots 2&ndash;5 are effectively all "free."
-    The config above sets all five explicitly anyway, so nothing depends on a default you can't see
-    just by reading your own config file.
-  </div>
-
   <script>
-    $('#copy-config').on('click', function(){
-      navigator.clipboard.writeText($('#config-block').text().trim()).then(() => {
-        $('#copy-feedback').text('Copied!');
-        setTimeout(() => $('#copy-feedback').text(''), 1500);
+    $(document).on('click', '.clipboard-icon', function(){
+      const id = $(this).data('copy');
+      const feedback = $(this).next('.copy-feedback');
+      navigator.clipboard.writeText($('#' + id).text().trim()).then(() => {
+        feedback.text('Copied!');
+        setTimeout(() => feedback.text(''), 1500);
       });
     });
   </script>

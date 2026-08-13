@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Server details — RTCW / ET Server List</title>
+  <title>Server details — RTCW / ET / Q3 Server List</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
@@ -27,6 +27,8 @@
   .offline-dot { background:#f44336; }
   .server-status { font-size:.85rem;color:#ccc; }
   .heartbeat-icon { color:#0dcaf0; }
+  .source-badge { display:inline-block;background:#222;border:1px solid #333;border-radius:4px;padding:.1rem .5rem;font-size:.8rem;margin:.15rem .25rem .15rem 0;color:#ccc; }
+  .source-badge-heartbeat { background:#0dcaf022;border-color:#0dcaf0;color:#0dcaf0; }
   .clipboard-icon { cursor:pointer;font-size:1rem;color:#ccc;transition:color .2s; }
   .clipboard-icon:hover { color:#fff; }
   .chart-label { display:block;font-size:.75rem;color:#aaa;margin-bottom:.2rem; }
@@ -50,7 +52,8 @@
       <div class="card-header d-flex align-items-start justify-content-between flex-wrap gap-2">
         <div class="flex-grow-1">
           <div class="q3name fs-4">
-            <span class="badge bg-secondary me-2" id="d-protocol"></span>
+            <span class="badge bg-secondary me-1" id="d-game"></span>
+            <span class="badge bg-dark border border-secondary me-2" id="d-protocol-version"></span>
             <span id="d-hostname"></span>
           </div>
           <div class="address d-flex align-items-center">
@@ -80,6 +83,7 @@
           <div><span class="info-label">PunkBuster</span><span id="d-pb"></span></div>
           <div><span class="info-label">Missed Polls</span><span id="d-missed-polls"></span></div>
           <div><span class="info-label">First Seen</span><span id="d-first-seen"></span></div>
+          <div><span class="info-label">Learned via</span><span id="d-sources"></span></div>
         </div>
 
         <div class="mt-4">
@@ -128,9 +132,10 @@
     }
 
     function renderServer(server){
-      document.title = (server.hostname || server.address) + ' — RTCW / ET Server List';
+      document.title = (server.hostname || server.address) + ' — RTCW / ET / Q3 Server List';
 
-      $('#d-protocol').text(getProtocolLabel(server.protocol));
+      $('#d-game').text(getGameLabel(server.protocol));
+      $('#d-protocol-version').text(getVersionLabel(server));
       $('#d-hostname').html(parseNameColors(server.hostname || 'Unnamed Server'));
       $('#d-address').text(server.address);
       $('#d-clipboard').data('ip', server.address);
@@ -153,6 +158,7 @@
       $('#d-pb').html(server.pb || '<em>unknown</em>');
       $('#d-missed-polls').css('color', (server.missed_polls||0) > 0 ? '#f0ad4e' : 'inherit').text(server.missed_polls ?? 0);
       $('#d-first-seen').text(formatFullTime(server.first_seen));
+      $('#d-sources').html(formatSources(server.sources));
 
       const realPlayers = (server.players||[]).map(p=>`<div class="q3name">${parseNameColors(p)}</div>`).join('');
       $('#d-players').html(realPlayers || '<em>No players online</em>');

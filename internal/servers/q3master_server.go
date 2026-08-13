@@ -153,6 +153,10 @@ func handleHeartbeat(raddr *net.UDPAddr, line string) {
     s.MissedPolls = 0
     s.LastHeartbeat = time.Now()
     s.Heartbeats++
+    if s.Sources == nil {
+        s.Sources = make(map[string]time.Time)
+    }
+    s.Sources["Direct heartbeat"] = time.Now()
     serverMutex.Unlock()
 }
 
