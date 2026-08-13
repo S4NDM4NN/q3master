@@ -614,9 +614,15 @@
                       <span class="badge bg-secondary me-1">${getGameLabel(server)}</span>
                       <span class="badge bg-dark border border-secondary">${getVersionLabel(server)}</span>
                     </div>
-                    <div class="server-status flex-shrink-0" title="${label}">
-                      <span class="status-dot ${dot}"></span>
-                      ${hb ? '<i class="bi bi-broadcast heartbeat-icon" title="Direct heartbeat seen recently"></i>' : ''}
+                    <div class="text-end flex-shrink-0">
+                      <span class="server-status" title="${label}">
+                        <span class="status-dot ${dot}"></span>
+                        ${hb ? '<i class="bi bi-broadcast heartbeat-icon" title="Direct heartbeat seen recently"></i>' : ''}
+                      </span>
+                      <span class="player-count ms-2">
+                        ${(server.player_count??0)}/${server.max_players??0} players
+                        ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
+                      </span>
                     </div>
                   </div>
 
@@ -633,14 +639,8 @@
                   </div>
 
                   <div class="text-end mt-2">
-                    <div class="player-count">
-                      ${(server.player_count??0)}/${server.max_players??0} players
-                      ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
-                    </div>
-                    <div class="text-end mt-2">
-                      <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page" class="me-3"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
-                      <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
-                    </div>
+                    <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page" class="me-3"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
+                    <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
                   </div>
                 </div>
 
