@@ -136,6 +136,9 @@ func minf(a, b float64) float64 { if a < b { return a } ; return b }
 
 func handleHeartbeat(raddr *net.UDPAddr, line string) {
     addr := net.JoinHostPort(raddr.IP.String(), strconv.Itoa(raddr.Port))
+    if checkIgnored(addr) || isKnownAlias(addr) {
+        return
+    }
     serverMutex.Lock()
     s, ok := serverList[addr]
     if !ok {
@@ -153,8 +156,22 @@ func handleHeartbeat(raddr *net.UDPAddr, line string) {
     s.MissedPolls = 0
     s.LastHeartbeat = time.Now()
     s.Heartbeats++
+    if s.Sources == nil {
+        s.Sources = make(map[string]time.Time)
+    }
+    s.Sources[directHeartbeatSourceLabel] = time.Now()
     serverMutex.Unlock()
 }
+
+// directHeartbeatSourceLabel names this project's own master (the one
+// running this code) as a ServerEntry.Sources entry when a server
+// heartbeats straight to it rather than being found via discovery -- named
+// explicitly, like every other source, rather than a generic "direct
+// heartbeat" label that doesn't say which master. It's always
+// wolfmaster.s4ndmod.com specifically: heartbeats are inherently
+// self-directed (a server's sv_masterN pointing here is what sends them to
+// *this* instance, not to any of the third-party masters in knownMasters).
+const directHeartbeatSourceLabel = "wolfmaster.s4ndmod.com (direct heartbeat)"
 
 func handleShutdown(raddr *net.UDPAddr) {
     addr := net.JoinHostPort(raddr.IP.String(), strconv.Itoa(raddr.Port))

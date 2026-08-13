@@ -91,7 +91,7 @@ func ServeNetworkHistoryAPI(w http.ResponseWriter, r *http.Request) {
     since := history.ParseRange(r.URL.Query().Get("range"))
     protocol := r.URL.Query().Get("protocol")
 
-    points, err := history.GetNetworkHistory(r.Context(), protocol, since)
+    points, err := history.GetNetworkHistory(r.Context(), protocol, since, servers.AliasAddresses())
     if err != nil {
         http.Error(w, "failed to load network history", http.StatusInternalServerError)
         return
@@ -128,5 +128,12 @@ func ServeMasterDailyUptimeAPI(w http.ResponseWriter, r *http.Request) {
 
     w.Header().Set("Content-Type", "application/json")
     _ = json.NewEncoder(w).Encode(points)
+}
+
+// ServeIgnoredAPI responds with every blocked IP (see servers.ignoredHosts)
+// and the specific addresses observed trying to register under it.
+func ServeIgnoredAPI(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(servers.GetIgnoredHosts())
 }
 

@@ -226,6 +226,11 @@ func pollServer(s *ServerEntry) {
 		case "protocol":
 			// capture protocol if server reports it
 			newStatus.Protocol = parseInt(v)
+		case "Score_Time":
+			if secs, ok := parseMatchTime(v); ok {
+				newStatus.MatchTimeSec = secs
+				newStatus.HasMatchTime = true
+			}
 		}
 	}
 
@@ -269,6 +274,8 @@ func pollServer(s *ServerEntry) {
 	s.Online = true
 	s.Bots = newStatus.Bots
 	s.BotCount = newStatus.BotCount
+	s.MatchTimeSec = newStatus.MatchTimeSec
+	s.HasMatchTime = newStatus.HasMatchTime
 	s.LastGoodPoll = time.Now()
 	s.MissedPolls = 0
 	s.State = StateOnline

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>RTCW / ET Server List</title>
+  <title>RTCW / ET / Q3 Server List</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
@@ -34,7 +34,12 @@
   .info-toggle:hover { color:#0dcaf0; }
   .back-link { color:#66d9ef;text-decoration:none; }
   .back-link:hover { color:#0dcaf0;text-decoration:underline; }
-  .toolbar { display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem; }
+  .toolbar { display:flex;flex-direction:column;gap:.65rem;margin-bottom:1rem; }
+  .toolbar-row { display:flex;flex-wrap:wrap;gap:.75rem;align-items:center; }
+  .toolbar-row-refine { row-gap:.4rem; }
+  .filter-label { font-size:.8rem;color:#999;white-space:nowrap; }
+  #version-filter, #mod-filter { max-width:220px;flex:1 1 160px; }
+  #game-filter { flex-wrap:wrap;row-gap:.25rem; }
   .counts { opacity:.8 }
   .chart-label { display:block;font-size:.75rem;color:#aaa;margin-bottom:.2rem; }
   .history-chart { display:block; }
@@ -46,6 +51,8 @@
   .uptime-bar.degraded { background:#f0ad4e; }
   .uptime-bar.down { background:#f44336; }
   .uptime-bars-labels { font-size:.7rem;color:#888;margin-top:.25rem; }
+  .source-badge { display:inline-block;background:#222;border:1px solid #333;border-radius:4px;padding:.1rem .5rem;font-size:.8rem;margin:.15rem .25rem .15rem 0;color:#ccc; }
+  .source-badge-heartbeat { background:#0dcaf022;border-color:#0dcaf0;color:#0dcaf0; }
 
   /* --- Mobile layout hardening --- */
   @media (max-width: 768px) {
@@ -63,7 +70,7 @@
 </head>
 <body>
   <h1 class="mb-3">
-    RTCW / ET Server List
+    RTCW / ET / Q3 Server List
   </h1>
 
   <div class="mb-3 server-status">
@@ -111,25 +118,47 @@
   </div>
 
   <div class="toolbar">
-    <input type="text" id="server-filter" class="form-control bg-dark text-light border-secondary" placeholder="Filter servers... (hostname, map, mod, ip, version)" style="max-width:420px;">
-    <div class="form-check">
-      <input class="form-check-input" type="checkbox" id="showOfflineToggle">
-      <label class="form-check-label text-light" for="showOfflineToggle">Show Offline</label>
+    <div class="toolbar-row">
+      <input type="text" id="server-filter" class="form-control bg-dark text-light border-secondary" placeholder="Filter servers... (hostname, map, mod, ip, version)" style="max-width:420px;">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" id="showOfflineToggle">
+        <label class="form-check-label text-light" for="showOfflineToggle">Show Offline</label>
+      </div>
+      <div id="server-counts" class="fs-6 text-light-emphasis counts ms-auto"></div>
     </div>
-    <div class="btn-group" role="group" id="protocol-filter">
-      <input type="radio" class="btn-check" name="protocol" id="filter-all" value="all" autocomplete="off" checked>
-      <label class="btn btn-outline-light" for="filter-all">All</label>
 
-      <input type="radio" class="btn-check" name="protocol" id="filter-57" value="57" autocomplete="off">
-      <label class="btn btn-outline-light" for="filter-57">RTCW 1.0</label>
+    <div class="toolbar-row">
+      <div class="btn-group" role="group" id="game-filter">
+        <input type="radio" class="btn-check" name="game" id="filter-all" value="all" autocomplete="off" checked>
+        <label class="btn btn-outline-light" for="filter-all">All</label>
 
-      <input type="radio" class="btn-check" name="protocol" id="filter-60" value="60" autocomplete="off">
-      <label class="btn btn-outline-light" for="filter-60">RTCW 1.4</label>
+        <input type="radio" class="btn-check" name="game" id="filter-rtcw" value="rtcw" autocomplete="off">
+        <label class="btn btn-outline-light" for="filter-rtcw">RTCW</label>
 
-      <input type="radio" class="btn-check" name="protocol" id="filter-84" value="84" autocomplete="off">
-      <label class="btn btn-outline-light" for="filter-84">ET 2.60b</label>
+        <input type="radio" class="btn-check" name="game" id="filter-et" value="et" autocomplete="off">
+        <label class="btn btn-outline-light" for="filter-et">ET</label>
+
+        <input type="radio" class="btn-check" name="game" id="filter-q3a" value="q3a" autocomplete="off">
+        <label class="btn btn-outline-light" for="filter-q3a">Quake 3 Arena</label>
+
+        <input type="radio" class="btn-check" name="game" id="filter-oa" value="oa" autocomplete="off">
+        <label class="btn btn-outline-light" for="filter-oa">OpenArena</label>
+
+        <input type="radio" class="btn-check" name="game" id="filter-unknown" value="unknown" autocomplete="off">
+        <label class="btn btn-outline-warning" for="filter-unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</label>
+      </div>
     </div>
-    <div id="server-counts" class="fs-6 text-light-emphasis counts ms-auto"></div>
+
+    <div class="toolbar-row toolbar-row-refine">
+      <label class="filter-label" for="version-filter">Version</label>
+      <select id="version-filter" class="form-select form-select-sm bg-dark text-light border-secondary">
+        <option value="all">All versions</option>
+      </select>
+      <label class="filter-label" for="mod-filter">Mod</label>
+      <select id="mod-filter" class="form-select form-select-sm bg-dark text-light border-secondary">
+        <option value="all">All mods</option>
+      </select>
+    </div>
   </div>
 
   
@@ -159,13 +188,55 @@
       loadServerHistory(address, canvas);
     });
 
+    // Network history is stored per raw protocol number, but the game
+    // filter now merges protocols that belong to the same game (e.g. RTCW
+    // 1.0 + 1.4). For a single-protocol game that's just one request; for a
+    // multi-protocol game, fetch each constituent protocol's series and sum
+    // matching timestamps -- hourly/daily buckets are truncated to fixed
+    // UTC boundaries independent of which protocol they're rolled up from,
+    // so same-range series line up point-for-point without extra alignment
+    // logic.
+    const GAME_PROTOCOLS = { rtcw: [57, 60, 61], et: [84, 82], q3a: [68], oa: [71] };
+    function fetchNetworkHistory(game, range, cb){
+      if (game === 'all'){
+        $.getJSON('/api/history/network?range=' + range + '&protocol=all', cb);
+        return;
+      }
+      // "unknown" (or any future game key without a protocol mapping) has
+      // no dedicated history bucket on the backend -- it's a diagnostic
+      // catch-all, not a stable game, so show no data rather than silently
+      // falling back to the "all" chart.
+      const protos = GAME_PROTOCOLS[game];
+      if (!protos || protos.length === 0){
+        cb([]);
+        return;
+      }
+      if (protos.length === 1){
+        $.getJSON('/api/history/network?range=' + range + '&protocol=' + protos[0], cb);
+        return;
+      }
+      Promise.all(protos.map(p => $.getJSON('/api/history/network?range=' + range + '&protocol=' + p)))
+        .then(results => {
+          const merged = {};
+          results.forEach(points => {
+            (points || []).forEach(pt => {
+              const bucket = merged[pt.ts] || { ts: pt.ts, total_players: 0, online_server_count: 0 };
+              bucket.total_players += pt.total_players;
+              bucket.online_server_count += pt.online_server_count;
+              merged[pt.ts] = bucket;
+            });
+          });
+          cb(Object.values(merged).sort((a, b) => new Date(a.ts) - new Date(b.ts)));
+        });
+    }
+
     function refreshNetworkHistory(){
-      const protocol = $("input[name='protocol']:checked").val() || 'all';
-      const suffix = protocol === 'all' ? '' : ' — ' + protocolFilterLabel(protocol);
+      const game = $("input[name='game']:checked").val() || 'all';
+      const suffix = game === 'all' ? '' : ' — ' + gameFilterLabel(game);
       $('#network-players-label').text('Total real players (7d)' + suffix);
       $('#network-servers-label').text('Online servers (7d)' + suffix);
 
-      $.getJSON('/api/history/network?range=7d&protocol=' + encodeURIComponent(protocol), function(points){
+      fetchNetworkHistory(game, '7d', function(points){
         const pts = points || [];
         drawSparkline(document.getElementById('network-players-chart'),
           pts.map(p => ({ x: new Date(p.ts).getTime(), y: p.total_players })), {color:'#4caf50'});
@@ -192,6 +263,33 @@
       return isNaN(d) || d.getFullYear() < 2000;
     }
 
+    // Rebuilds the version/mod dropdowns from the *live* server list rather
+    // than a fixed table -- versions and mods both turned out to be
+    // open-ended, self-reported strings (see common.js), so what's
+    // filterable has to reflect what's actually out there right now,
+    // scoped to the selected game. Preserves the current selection if it's
+    // still valid for the new option set.
+    function versionKey(s){ return s.protocol + '::' + getVersionLabel(s); }
+    function refreshFilterOptions(data){
+      const game = $("input[name='game']:checked").val() || 'all';
+      const known = data.filter(s => !isNewServer(s));
+
+      const verSel = $('#version-filter');
+      const prevVer = verSel.val() || 'all';
+      const verOpts = computeFilterOptions(known, game, versionKey,
+        s => game === 'all' ? `${getGameLabel(s)} ${getVersionLabel(s)}` : getVersionLabel(s));
+      verSel.empty().append('<option value="all">All versions</option>');
+      verOpts.forEach(o => verSel.append(`<option value="${o.key}">${o.label} (${o.count})</option>`));
+      verSel.val([...verSel.find('option')].some(o => o.value === prevVer) ? prevVer : 'all');
+
+      const modSel = $('#mod-filter');
+      const prevMod = modSel.val() || 'all';
+      const modOpts = computeFilterOptions(known, game, s => s.mod || null, s => s.mod || 'unknown');
+      modSel.empty().append('<option value="all">All mods</option>');
+      modOpts.forEach(o => modSel.append(`<option value="${o.key}">${o.label} (${o.count})</option>`));
+      modSel.val([...modSel.find('option')].some(o => o.value === prevMod) ? prevMod : 'all');
+    }
+
     // Consider a server heartbeating if we saw a heartbeat recently
     function isHeartbeating(s, windowMs = 60*60*1000){
       if (!s || !s.last_heartbeat) return false;
@@ -206,18 +304,24 @@
       function render(data){
         const container = $("#server-container").empty();
 
+        refreshFilterOptions(data);
+
         const showOffline = $("#showOfflineToggle").is(":checked");
-        const selectedProtocol = $("input[name='protocol']:checked").val();
+        const selectedGame = $("input[name='game']:checked").val();
+        const selectedVersion = $('#version-filter').val() || 'all';
+        const selectedMod = $('#mod-filter').val() || 'all';
         const q = ($('#server-filter').val()||'').toLowerCase();
 
         // Never show "new"
         let items = data.filter(s => !isNewServer(s));
 
-        // Apply protocol + search filters (not showOffline yet - counts
-        // below need the true online/offline split regardless of whether
-        // offline servers are actually being rendered as cards)
+        // Apply game + version + mod + search filters (not showOffline yet
+        // - counts below need the true online/offline split regardless of
+        // whether offline servers are actually being rendered as cards)
         items = items
-          .filter(s => selectedProtocol === "all" || String(s.protocol) === selectedProtocol)
+          .filter(s => selectedGame === "all" || getGameKey(s) === selectedGame)
+          .filter(s => selectedVersion === "all" || versionKey(s) === selectedVersion)
+          .filter(s => selectedMod === "all" || (s.mod||'') === selectedMod)
           .filter(s =>
             (s.hostname||'').toLowerCase().includes(q) ||
             (s.map||'').toLowerCase().includes(q) ||
@@ -237,10 +341,19 @@
         // Now apply showOffline for what actually gets rendered as cards.
         items = items.filter(s => showOffline || s.online === true);
 
-        // Sort + render as before
+        // Sort: online + populated servers first (both already fine to
+        // shift around live -- that's real player activity), then a
+        // deterministic order for everyone else so the empty-server tail
+        // doesn't visibly reshuffle on every refresh. Sorting that tail by
+        // hostname (not raw address) reads as the "standard" server-browser
+        // order players expect; address is only a final tiebreaker for the
+        // rare case of a blank/duplicate hostname.
+        const plainHostname = s => (s.hostname||'').replace(/\^[^^]/g, '').toLowerCase();
         items.sort((a,b)=>{
           if (a.online !== b.online) return a.online ? -1 : 1;
           if ((b.player_count|0)!==(a.player_count|0)) return (b.player_count|0)-(a.player_count|0);
+          const hn = plainHostname(a).localeCompare(plainHostname(b));
+          if (hn !== 0) return hn;
           return (a.address||'').localeCompare(b.address||'');
         });
 
@@ -266,7 +379,8 @@
                 <div class="card-header d-flex align-items-start justify-content-between">
                   <div class="flex-grow-1">
                     <div class="q3name fs-5">
-                      <span class="badge bg-secondary me-2">${getProtocolLabel(server.protocol)}</span>
+                      <span class="badge bg-secondary me-1">${getGameLabel(server)}</span>
+                      <span class="badge bg-dark border border-secondary me-2">${getVersionLabel(server)}</span>
                       ${hostname}
                     </div>
                     <div class="address d-flex align-items-center">
@@ -303,6 +417,9 @@
                     <div><span class="info-label">Gametype</span>${server.gametype||'<em>unknown</em>'}</div>
                     <div><span class="info-label">Version</span>${server.version||'<em>unknown</em>'}</div>
                     <div><span class="info-label">Missed Polls</span><span style="color:${(server.missed_polls||0)>0?'#f0ad4e':'inherit'}">${server.missed_polls??0}</span></div>
+                    <div><span class="info-label">Learned via</span>${formatSources(server.sources)}</div>
+                    ${server.also_known_as && server.also_known_as.length ? `
+                    <div style="grid-column:1/-1;"><span class="info-label">Also broadcasting as</span>${formatAlsoKnownAs(server.also_known_as)}</div>` : ``}
                   </div>
                   <div class="mt-3">
                     <span class="chart-label">Player history (7d)</span>
@@ -365,11 +482,15 @@
     const refreshNow = () => refreshServers(false);
     const refreshDebounced = debounce(() => refreshServers(false), 150);
 
-    // protocol + showOffline: instant re-render
-    $('#protocol-filter input').off('change').on('change', function(){
+    // game + version + mod + showOffline: instant re-render. render()
+    // rebuilds the version/mod dropdowns itself (scoped to whatever game is
+    // now selected), so no separate refresh call is needed here.
+    $('#game-filter input').off('change').on('change', function(){
       refreshNow();
       refreshNetworkHistory();
     });
+    $('#version-filter').off('change').on('change', refreshNow);
+    $('#mod-filter').off('change').on('change', refreshNow);
     $('#showOfflineToggle').off('change').on('change', refreshNow);
 
     // search box: debounced re-render

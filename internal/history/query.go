@@ -107,8 +107,13 @@ func GetServerHistory(ctx context.Context, address string, since time.Time) ([]P
 // GetNetworkHistory returns network-wide history points for one protocol
 // bucket ("all" for the combined fleet, or a Q3 protocol number as a string
 // e.g. "84") since the given cutoff, merging tiers the same way
-// GetServerHistory does.
-func GetNetworkHistory(ctx context.Context, protocol string, since time.Time) ([]NetworkPoint, error) {
+// GetServerHistory does. aliases (address -> protocol, see
+// servers.AliasAddresses) are addresses now known to be clone-detected
+// duplicates of some other server; their own historical contribution is
+// subtracted from the returned points (see correctForAliases) so charts
+// recorded before a clone was known to be a duplicate read correctly. Pass
+// nil/empty if the caller has none or doesn't care.
+func GetNetworkHistory(ctx context.Context, protocol string, since time.Time, aliases map[string]int) ([]NetworkPoint, error) {
 	if !enabled {
 		return []NetworkPoint{}, nil
 	}
@@ -159,6 +164,7 @@ func GetNetworkHistory(ctx context.Context, protocol string, since time.Time) ([
 	}
 
 	sort.Slice(points, func(i, j int) bool { return points[i].Ts.Before(points[j].Ts) })
+	points = correctForAliases(ctx, points, protocol, aliases, since)
 	return points, nil
 }
 
