@@ -81,11 +81,11 @@
 
   /* --- Mobile layout hardening --- */
   @media (max-width: 768px) {
-    .card-header { display:flex; flex-wrap:wrap; align-items:flex-start; gap:.5rem; }
-    .card-header > div:last-child {
-      width:100% !important;
+    .card-footer-row { flex-direction:column;align-items:flex-start !important; }
+    .card-footer-row > .text-end {
+      width:100%;
       margin-top:.25rem;
-      text-align:left;
+      text-align:left !important;
       min-width:0 !important;
     }
     .card-header .d-flex.gap-4 { flex-wrap:wrap; gap:.5rem 1rem; }
@@ -563,38 +563,42 @@
                 data-address="${(server.address||'').toLowerCase()}"
                 data-version="${(server.version||'').toLowerCase()}">
               <div class="card">
-                <div class="card-header d-flex align-items-start justify-content-between">
-                  <div class="flex-grow-1">
-                    <div class="q3name fs-5">
+                <div class="card-header">
+                  <div class="d-flex align-items-start justify-content-between gap-2">
+                    <div class="q3name">
                       <span class="badge bg-secondary me-1">${getGameLabel(server)}</span>
-                      <span class="badge bg-dark border border-secondary me-2">${getVersionLabel(server)}</span>
-                      ${hostname}
+                      <span class="badge bg-dark border border-secondary">${getVersionLabel(server)}</span>
                     </div>
-                    <div class="address d-flex align-items-center">
-                      <code id="ip-${idx}" class="me-2">${server.address}</code>
-                      <i class="bi bi-clipboard clipboard-icon" data-ip="${server.address}" title="Copy to clipboard"></i>
-                    </div>
-                    <div class="d-flex gap-4 mt-2">
-                      <div><span class="text-light-emphasis">Mod:</span> <span class="text-info">${server.mod||'unknown'}</span></div>
-                      <div><span class="text-light-emphasis">Map:</span> <span class="text-warning">${server.map||'unknown'}</span></div>
-                    </div>
-                  </div>
-
-                  <div class="text-end ms-3" style="min-width: 160px;">
-                    <div class="server-status mb-1">
+                    <div class="server-status flex-shrink-0">
                       <span class="status-dot ${dot}"></span>${label}
                       ${hb ? '<i class="bi bi-broadcast heartbeat-icon ms-1" title="Direct heartbeat seen recently"></i>' : ''}
                     </div>
-                    <div class="player-count">
-                      ${(server.player_count??0)}/${server.max_players??0} players
-                      ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
+                  </div>
+
+                  <div class="q3name fs-5 hostname-line mt-1">${hostname}</div>
+
+                  <div class="address d-flex align-items-center mt-1">
+                    <code id="ip-${idx}" class="me-2">${server.address}</code>
+                    <i class="bi bi-clipboard clipboard-icon" data-ip="${server.address}" title="Copy to clipboard"></i>
+                  </div>
+
+                  <div class="card-footer-row d-flex align-items-end justify-content-between flex-wrap gap-2 mt-2">
+                    <div class="d-flex gap-4">
+                      <div><span class="text-light-emphasis">Mod:</span> <span class="text-info">${server.mod||'unknown'}</span></div>
+                      <div><span class="text-light-emphasis">Map:</span> <span class="text-warning">${server.map||'unknown'}</span></div>
                     </div>
-                    <div class="text-end" style="font-size:.85rem;color:${server.online?'#ccc':'#f0ad4e'};">
-                      Last seen: ${formatLastSeen(server.last_seen)}
-                    </div>
-                    <div class="text-end mt-2">
-                      <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page" class="me-3"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
-                      <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
+                    <div class="text-end" style="min-width: 160px;">
+                      <div class="player-count">
+                        ${(server.player_count??0)}/${server.max_players??0} players
+                        ${hasBots ? ` <i class="bi bi-robot" title="Bots"></i> ${server.bot_count??0}` : ``}
+                      </div>
+                      <div class="text-end" style="font-size:.85rem;color:${server.online?'#ccc':'#f0ad4e'};">
+                        Last seen: ${formatLastSeen(server.last_seen)}
+                      </div>
+                      <div class="text-end mt-2">
+                        <a href="server.html?address=${encodeURIComponent(server.address)}" title="Open server page" class="me-3"><i class="bi bi-box-arrow-up-right info-toggle"></i></a>
+                        <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
+                      </div>
                     </div>
                   </div>
                 </div>
