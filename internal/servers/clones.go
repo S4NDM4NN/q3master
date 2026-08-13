@@ -34,6 +34,11 @@ type CloneGroup struct {
 type AKAEntry struct {
     Address  string `json:"address"`
     Hostname string `json:"hostname"`
+    // Protocol is captured alongside Hostname (same one-time-snapshot
+    // caveat) so historical-chart correction (see AliasAddresses and
+    // internal/history's use of it) can scope which protocol bucket an
+    // alias's already-recorded contribution should be subtracted from.
+    Protocol int `json:"protocol"`
 }
 
 var (
@@ -114,6 +119,7 @@ func detectClones() {
     lastGoodPoll := make(map[string]time.Time)
     matchTimeSec := make(map[string]int)
     hostnameOf := make(map[string]string)
+    protocolOf := make(map[string]int)
 
     serverMutex.Lock()
     for addr, s := range serverList {
@@ -122,6 +128,7 @@ func detectClones() {
         }
         firstSeen[addr] = s.FirstSeen
         hostnameOf[addr] = s.Hostname
+        protocolOf[addr] = s.Protocol
 
         roster := make([]string, 0, len(s.Players)+len(s.Bots))
         roster = append(roster, s.Players...)
@@ -154,7 +161,7 @@ func detectClones() {
             "Reports identical map %q and player/bot roster from every address listed -- collapsed into one entry.",
             k.mapName,
         )
-        mergeGroup(addrs, firstSeen, hostnameOf, reason)
+        mergeGroup(addrs, firstSeen, hostnameOf, protocolOf, reason)
     }
 
     for k, addrs := range botRosterGroups {
@@ -165,7 +172,7 @@ func detectClones() {
             "Reports identical hostname %q, map %q, and bot roster (no real players online) from every address listed -- collapsed into one entry.",
             k.hostname, k.mapName,
         )
-        mergeGroup(addrs, firstSeen, hostnameOf, reason)
+        mergeGroup(addrs, firstSeen, hostnameOf, protocolOf, reason)
     }
 
     for hk, addrs := range emptyGroups {
@@ -195,7 +202,7 @@ func detectClones() {
             "Reports identical hostname %q and map %q with nobody (not even bots) online, but its elapsed match-time clock (Score_Time) stays in sync with the real time between polls across every address listed -- collapsed into one entry.",
             hk.hostname, hk.mapName,
         )
-        mergeGroup(consistent, firstSeen, hostnameOf, reason)
+        mergeGroup(consistent, firstSeen, hostnameOf, protocolOf, reason)
     }
 
     cloneMutex.Unlock()
@@ -208,7 +215,7 @@ func detectClones() {
 // records each alias's hostname at the moment it was folded in (aliases
 // are never independently polled again afterward, so this is a one-time
 // snapshot -- see AKAEntry). Caller holds cloneMutex.
-func mergeGroup(addrs []string, firstSeen map[string]time.Time, hostnameOf map[string]string, reason string) {
+func mergeGroup(addrs []string, firstSeen map[string]time.Time, hostnameOf map[string]string, protocolOf map[string]int, reason string) {
     sort.Strings(addrs)
 
     primary, ok := existingPrimaryFor(addrs)
@@ -234,7 +241,7 @@ func mergeGroup(addrs []string, firstSeen map[string]time.Time, hostnameOf map[s
         if a == primary {
             continue
         }
-        akaMap[a] = AKAEntry{Address: a, Hostname: hostnameOf[a]}
+        akaMap[a] = AKAEntry{Address: a, Hostname: hostnameOf[a], Protocol: protocolOf[a]}
         aliasToPrimary[a] = primary
     }
     aka := make([]AKAEntry, 0, len(akaMap))
@@ -347,4 +354,25 @@ func LoadCloneGroups(path string) error {
     }
     cloneMutex.Unlock()
     return nil
+}
+
+// AliasAddresses returns every address currently known to be a clone-
+// detected alias (folded into some other server -- see CloneGroup), keyed
+// by address with the protocol it was reporting when folded in. This
+// package already imports internal/history (RecordSample), so history
+// can't import it back to ask directly; callers that need both (see
+// httpapi.ServeNetworkHistoryAPI) fetch this and pass it into history's
+// query functions, which use it to subtract each alias's own historical
+// contribution from network-total charts that were recorded before the
+// alias was known to be a duplicate.
+func AliasAddresses() map[string]int {
+    cloneMutex.Lock()
+    defer cloneMutex.Unlock()
+    out := make(map[string]int, len(aliasToPrimary))
+    for _, g := range cloneGroups {
+        for _, a := range g.AKA {
+            out[a.Address] = a.Protocol
+        }
+    }
+    return out
 }

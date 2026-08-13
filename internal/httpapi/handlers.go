@@ -91,7 +91,7 @@ func ServeNetworkHistoryAPI(w http.ResponseWriter, r *http.Request) {
     since := history.ParseRange(r.URL.Query().Get("range"))
     protocol := r.URL.Query().Get("protocol")
 
-    points, err := history.GetNetworkHistory(r.Context(), protocol, since)
+    points, err := history.GetNetworkHistory(r.Context(), protocol, since, servers.AliasAddresses())
     if err != nil {
         http.Error(w, "failed to load network history", http.StatusInternalServerError)
         return
