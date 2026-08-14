@@ -29,6 +29,21 @@
   .callout-warn { border-color:#f0ad4e;background:#2a2416;color:#e8d8b8; }
   .game-tabs .nav-link { color:#aaa;background:transparent;border-color:#333; }
   .game-tabs .nav-link.active { color:#111;background:#9cdcfe;border-color:#9cdcfe; }
+
+  /* The "Why these four" tables squeeze a hostname column and a full
+     paragraph of explanation side by side, which has no room to work with
+     on a narrow phone screen -- below 600px, drop the row/column grid
+     entirely and stack each row as its own block instead (hostname above,
+     explanation below), same "label above content" pattern used elsewhere
+     on this site's narrow layouts. */
+  @media (max-width: 600px) {
+    table, tbody, tr, td { display:block;width:100%; }
+    tr:first-child { display:none; }
+    tr { margin-bottom:1rem;padding-bottom:.75rem;border-bottom:1px solid #2a2a2a; }
+    tr:last-child { margin-bottom:0;padding-bottom:0;border-bottom:none; }
+    td { border-bottom:none;padding:.15rem 0; }
+    td:first-child { font-size:1rem;margin-bottom:.25rem; }
+  }
 </style>
 </head>
 <body>
