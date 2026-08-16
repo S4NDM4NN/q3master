@@ -67,11 +67,11 @@ func isKnownAlias(addr string) bool {
 // essentially never satisfy it by chance.
 const matchTimeTolerance = 8 * time.Second
 
-// realRosterMinSize/realRosterMaxDrift bound the fuzzy match used for
-// tier 1 below: two real-player rosters on the same map are treated as the
-// same clone if they're either byte-identical, or differ by at most
-// realRosterMaxDrift names while both having at least realRosterMinSize
-// names total. This absorbs ordinary player churn between when different
+// realRosterMinSize/realRosterMaxDrift bound the match used for tier 1
+// below: two real-player rosters on the same map are treated as the same
+// clone if they differ by at most realRosterMaxDrift names (0 meaning
+// byte-identical) while both having at least realRosterMinSize names total.
+// The drift tolerance absorbs ordinary player churn between when different
 // addresses get polled (found 2026-08-13: two aliases of the same busy A51
 // server differed by exactly one swapped player -- 15 of 16 names
 // identical -- and so never matched under a byte-exact comparison, no
@@ -79,6 +79,18 @@ const matchTimeTolerance = 8 * time.Second
 // coincidence: two genuinely independent, decently-populated matches
 // essentially never share all but one or two of their real players' exact
 // chosen nicknames.
+//
+// The size floor applies even to a byte-identical (0-drift) match -- it
+// used to only gate the fuzzy path, which meant two totally unrelated
+// servers that each happened to have exactly one real player who'd never
+// set a name (both defaulting to the client's generic placeholder, e.g.
+// "UnnamedPlayer") could satisfy an exact-roster match by coincidence on a
+// popular map. Found 2026-08-16: 213.202.230.213:27967's clone group had
+// swept in 51.254.137.97:27960 ("Wait & Bleed - OSP [Q3 1.32e]") this way --
+// an unrelated server with no hostname resemblance to the group's other,
+// genuine members, joined solely because both had a lone "UnnamedPlayer".
+// A single matching name (chosen or not) is nowhere near "astronomically
+// unlikely" the way a whole populated roster matching is.
 const (
     realRosterMinSize  = 6
     realRosterMaxDrift = 2
@@ -189,9 +201,9 @@ func detectClones() {
             for b := a + 1; b < len(idxs); b++ {
                 i, j := idxs[a], idxs[b]
                 diff := rosterSymmetricDiff(realEntries[i].roster, realEntries[j].roster)
-                if diff == 0 || (diff <= realRosterMaxDrift &&
+                if diff <= realRosterMaxDrift &&
                     len(realEntries[i].roster) >= realRosterMinSize &&
-                    len(realEntries[j].roster) >= realRosterMinSize) {
+                    len(realEntries[j].roster) >= realRosterMinSize {
                     uf.union(i, j)
                 }
             }
