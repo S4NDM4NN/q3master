@@ -54,7 +54,10 @@
     on &mdash; not just whichever one happens to be its "primary." These are still collapsed to
     one entry and still served to clients querying this master &mdash; nothing here is dropped,
     this page exists so the padding is visible rather than silently absorbed. Click a row to
-    see the full port breakdown.
+    see the full port breakdown. Every pairing is periodically re-verified with a fresh check
+    of its own (starting at 15 minutes for a brand-new pairing, backing off toward once a day
+    as it keeps holding up) &mdash; one that no longer matches is automatically unpaired and
+    returned to the main list as its own entry instead of staying wrong forever.
   </div>
 
   <div id="padding-container"></div>
@@ -73,12 +76,17 @@
             const rows = ipEntry.addresses.map(a => {
               const badge = a.is_primary ? '<span class="primary-badge">shown on list</span>' : '';
               const h = a.hostname ? parseNameColors(a.hostname) : '<em>—</em>';
-              return `<tr><td><code>${a.address}</code></td><td>${badge}</td><td class="q3name">${h}</td></tr>`;
+              const verified = a.is_primary
+                ? ''
+                : a.last_checked
+                  ? `verified ${formatLastSeen(a.last_checked)} (${a.check_count||0}×)`
+                  : '<em>not yet rechecked</em>';
+              return `<tr><td><code>${a.address}</code></td><td>${badge}</td><td class="q3name">${h}</td><td class="server-status">${verified}</td></tr>`;
             }).join('');
             return `
               <div class="ip-block">
                 <div class="ip-block-header"><code>${ipEntry.ip}</code> <span class="server-status">${ipEntry.addresses.length} ports</span></div>
-                <table><tr><th>Address</th><th></th><th>Hostname</th></tr>${rows}</table>
+                <table><tr><th>Address</th><th></th><th>Hostname</th><th>Recheck</th></tr>${rows}</table>
               </div>`;
           }).join('');
           container.append(`

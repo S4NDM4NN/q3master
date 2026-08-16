@@ -26,11 +26,16 @@ type CloneGroup struct {
 }
 
 // AKAEntry names one address folded into a CloneGroup, with the hostname
-// text it was reporting at the moment it was folded in. Alias addresses
-// are never independently polled again afterward (see isKnownAlias), so
-// this is a one-time snapshot, not a live value -- still useful context,
-// e.g. distinguishing a region-labeled mirror ("...eu" vs "...de") of the
-// same live match from a truly anonymous duplicate port.
+// text it was reporting at the moment it was folded in. Alias addresses are
+// excluded from ordinary discovery/heartbeat/polling for as long as they
+// stay paired (see isKnownAlias), so Hostname/Protocol are a one-time
+// snapshot, not a live value -- still useful context, e.g. distinguishing a
+// region-labeled mirror ("...eu" vs "...de") of the same live match from a
+// truly anonymous duplicate port. They ARE periodically re-verified with a
+// direct poll of their own, though -- see clone_recheck.go -- which is what
+// FirstPaired/LastChecked/CheckCount below track; a pairing that no longer
+// holds up gets unpaired (clone_recheck.go's unpairAlias) rather than
+// staying wrong forever.
 type AKAEntry struct {
     Address  string `json:"address"`
     Hostname string `json:"hostname"`
@@ -39,6 +44,25 @@ type AKAEntry struct {
     // internal/history's use of it) can scope which protocol bucket an
     // alias's already-recorded contribution should be subtracted from.
     Protocol int `json:"protocol"`
+    // FirstPaired is when this address was first folded into its group --
+    // set once by mergeGroup and never touched again, so it's a stable
+    // "how long has this pairing held up" anchor even though CloneGroup's
+    // own Detected keeps moving as the group gains other members.
+    FirstPaired time.Time `json:"first_paired"`
+    // LastChecked is when clone_recheck.go last directly re-polled this
+    // alias and compared it against its primary's current content -- zero
+    // if it's never been rechecked yet (due for its first recheck
+    // recheckIntervalLadder[0] after FirstPaired).
+    LastChecked time.Time `json:"last_checked,omitempty"`
+    // CheckCount is how many *consecutive* rechecks have confirmed the
+    // pairing still holds, without a single contradiction in between --
+    // indexes into recheckIntervalLadder (clone_recheck.go), so it's what
+    // actually slows a mature, repeatedly-confirmed pairing down toward the
+    // once-a-day floor. A no-response recheck (see recheckOne) leaves this
+    // alone rather than resetting or advancing it -- aliases on a busy
+    // relay have long dead stretches routinely, and a single missed poll
+    // isn't evidence either way.
+    CheckCount int `json:"check_count"`
 }
 
 var (
@@ -276,10 +300,17 @@ func detectClones() {
 }
 
 // mergeGroup folds addrs (2+ addresses already confirmed to be the same
-// clone) into cloneGroups, picking or reusing a stable primary, and
-// records each alias's hostname at the moment it was folded in (aliases
-// are never independently polled again afterward, so this is a one-time
+// clone) into cloneGroups, picking or reusing a stable primary, and records
+// each alias's hostname at the moment it was folded in (a one-time
 // snapshot -- see AKAEntry). Caller holds cloneMutex.
+//
+// An address already in aliasToPrimary can never appear in addrs here --
+// detectClones only ever considers addresses currently in serverList, and
+// an already-paired alias was removed from it (applyCloneGroups) -- except
+// after clone_recheck.go's unpairAlias restores one, which is exactly why
+// this treats every address in addrs as a fresh pairing (FirstPaired reset
+// to now) rather than trying to preserve old recheck history across an
+// unpair/re-pair cycle.
 func mergeGroup(addrs []string, firstSeen map[string]time.Time, hostnameOf map[string]string, protocolOf map[string]int, reason string) {
     sort.Strings(addrs)
 
@@ -306,7 +337,7 @@ func mergeGroup(addrs []string, firstSeen map[string]time.Time, hostnameOf map[s
         if a == primary {
             continue
         }
-        akaMap[a] = AKAEntry{Address: a, Hostname: hostnameOf[a], Protocol: protocolOf[a]}
+        akaMap[a] = AKAEntry{Address: a, Hostname: hostnameOf[a], Protocol: protocolOf[a], FirstPaired: time.Now()}
         aliasToPrimary[a] = primary
     }
     aka := make([]AKAEntry, 0, len(akaMap))
@@ -564,6 +595,12 @@ type PortPaddingAddress struct {
     Address   string `json:"address"`
     IsPrimary bool   `json:"is_primary"`
     Hostname  string `json:"hostname"` // live (serverList) for the primary; a one-time fold-in snapshot for an alias
+    // FirstPaired/LastChecked/CheckCount surface clone_recheck.go's ongoing
+    // re-verification of this specific pairing -- zero-valued for the
+    // primary itself, which isn't "paired" to anything, it's the anchor.
+    FirstPaired time.Time `json:"first_paired,omitempty"`
+    LastChecked time.Time `json:"last_checked,omitempty"`
+    CheckCount  int       `json:"check_count,omitempty"`
 }
 
 // PortPaddingIP is one IP with 2+ of a single clone group's own addresses on
@@ -629,7 +666,10 @@ func GetPortPaddingGroups() []PortPaddingView {
         byIP[primaryIP] = append(byIP[primaryIP], PortPaddingAddress{Address: g.Primary, IsPrimary: true, Hostname: primaryHostname})
         for _, a := range g.AKA {
             ip := ipOf(a.Address)
-            byIP[ip] = append(byIP[ip], PortPaddingAddress{Address: a.Address, Hostname: a.Hostname})
+            byIP[ip] = append(byIP[ip], PortPaddingAddress{
+                Address: a.Address, Hostname: a.Hostname,
+                FirstPaired: a.FirstPaired, LastChecked: a.LastChecked, CheckCount: a.CheckCount,
+            })
         }
 
         var ips []PortPaddingIP

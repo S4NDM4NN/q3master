@@ -55,6 +55,7 @@ func main() {
     servers.StartAutosave(stateFile, 2*time.Minute)
     servers.StartNetworkSampling(time.Minute, history.RecordNetworkSample)
     servers.StartCloneDetection(5*time.Minute, cloneGroupsFile)
+    servers.StartAliasRecheck()
     history.StartRollup(15 * time.Minute)
     // start UDP master server (getservers + heartbeat)
     servers.StartMasterUDP(":27950")
