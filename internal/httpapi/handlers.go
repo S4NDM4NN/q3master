@@ -137,3 +137,10 @@ func ServeIgnoredAPI(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(servers.GetIgnoredHosts())
 }
 
+// ServePortPaddingAPI responds with every clone group broadcasting from
+// multiple ports on one IP (see servers.GetPortPaddingGroups).
+func ServePortPaddingAPI(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(servers.GetPortPaddingGroups())
+}
+

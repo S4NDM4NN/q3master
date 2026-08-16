@@ -13,6 +13,16 @@ func parseInt(s string) int {
     return n
 }
 
+// ipOf strips the ":port" off an "ip:port" address. Port-independent
+// comparisons (curated host blocks, same-IP clone classification) all key on
+// this.
+func ipOf(addr string) string {
+    if i := strings.LastIndex(addr, ":"); i != -1 {
+        return addr[:i]
+    }
+    return addr
+}
+
 // parseMatchTime parses a Q3A-family "Score_Time" value ("M:SS" or
 // "H:MM:SS", as baseq3-derived mods report elapsed time in the current
 // match) into total seconds. ET/RTCW don't send an equivalent field, so

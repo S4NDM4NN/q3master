@@ -480,3 +480,74 @@ func AliasAddresses() map[string]int {
     }
     return out
 }
+
+// PortPaddingView is one detected CloneGroup that includes at least one
+// alias on the *same IP* as its primary -- i.e. a single server broadcasting
+// from several ports on one address to inflate its presence on the list.
+// Mirrors across genuinely different IPs are a separate, tolerated case and
+// are reported here (OtherIPAKA) without being what earns the flag.
+type PortPaddingView struct {
+    Primary    string     `json:"primary"`
+    IP         string     `json:"ip"`
+    Hostname   string     `json:"hostname"`
+    Online     bool       `json:"online"`
+    PortCount  int        `json:"port_count"` // 1 (primary) + len(SameIPAKA)
+    SameIPAKA  []AKAEntry `json:"same_ip_aka"`
+    OtherIPAKA []AKAEntry `json:"other_ip_aka"`
+    Reason     string     `json:"reason"`
+    Detected   time.Time  `json:"detected"`
+}
+
+// GetPortPaddingGroups returns every clone group with at least one same-IP
+// alias, most ports first. CloneGroup.Reason and Detected are already
+// recorded by mergeGroup but have never been exposed anywhere until now.
+func GetPortPaddingGroups() []PortPaddingView {
+    cloneMutex.Lock()
+    defer cloneMutex.Unlock()
+
+    serverMutex.Lock()
+    defer serverMutex.Unlock()
+
+    var out []PortPaddingView
+    for _, g := range cloneGroups {
+        primaryIP := ipOf(g.Primary)
+        var sameIP, otherIP []AKAEntry
+        for _, a := range g.AKA {
+            if ipOf(a.Address) == primaryIP {
+                sameIP = append(sameIP, a)
+            } else {
+                otherIP = append(otherIP, a)
+            }
+        }
+        if len(sameIP) == 0 {
+            continue
+        }
+
+        var hostname string
+        var online bool
+        if entry, ok := serverList[g.Primary]; ok {
+            hostname = entry.Hostname
+            online = entry.Online
+        }
+
+        out = append(out, PortPaddingView{
+            Primary:    g.Primary,
+            IP:         primaryIP,
+            Hostname:   hostname,
+            Online:     online,
+            PortCount:  1 + len(sameIP),
+            SameIPAKA:  sameIP,
+            OtherIPAKA: otherIP,
+            Reason:     g.Reason,
+            Detected:   g.Detected,
+        })
+    }
+
+    sort.Slice(out, func(i, j int) bool {
+        if out[i].PortCount != out[j].PortCount {
+            return out[i].PortCount > out[j].PortCount
+        }
+        return out[i].Primary < out[j].Primary
+    })
+    return out
+}

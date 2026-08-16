@@ -24,7 +24,7 @@ Quake 3 Arena and OpenArena servers should add this project's own master alongsi
 * **Multi-Master Discovery** – Queries the official id Software master alongside several community masters (`master.iortcw.org`, `etmaster.net`, `dpmaster.deathmask.net`, `master.ioquake3.org`, `master.maverickservers.com`, `master0.excessiveplus.net`) every 5 minutes, so an outage on any single master doesn't blank the list. Each server's "Learned via" shows every master (and/or direct heartbeat) that reported it.
 * **Built-in Master UDP** – Serves Quake 3 `getservers` requests and accepts `heartbeat`/`shutdown` messages on UDP port 27950.
 * **Direct Heartbeat Integration** – Combines discovery results with servers sending direct heartbeats straight to this project's own master, so listings stay resilient even if every upstream master is down.
-* **Clone/Duplicate Collapsing** – Automatically detects a server broadcasting itself across many ports (or even several IPs) to inflate its apparent presence on the list, and collapses those into a single entry with an honest "also broadcasting as" note — rather than either counting it N times or silently hiding it. Detection layers by how much signal is available: real-player roster match (works even if the operator varies the hostname), bot-only roster + hostname match, and — for empty servers — a Quake 3 Arena–specific match-time-clock consistency check.
+* **Clone/Duplicate Collapsing** – Automatically detects a server broadcasting itself across many ports (or even several IPs) to inflate its apparent presence on the list, and collapses those into a single entry with an honest "also broadcasting as" note — rather than either counting it N times or silently hiding it. Detection layers by how much signal is available: real-player roster match (works even if the operator varies the hostname), bot-only roster + hostname match, and — for empty servers — a Quake 3 Arena–specific match-time-clock consistency check. A mirror across genuinely different IPs is treated as tolerated; a clone group whose extra addresses share the primary's own IP is **port padding** — flagged with a warning icon on its card and listed on the `port-padding.html` dashboard (still shown once and still served, just called out).
 * **Suspected-Bot Flagging** – Some servers spoof bots as real players (nonzero ping) to inflate the apparent player count. Names that stay connected continuously, without ever leaving the roster, past a generous threshold get flagged as suspected bots in the player list.
 * **Player/Network History** – Optional MongoDB-backed history (see Configuration below): per-server player-count charts, network-wide total-players/online-servers charts (correctable for known clone groups after the fact, without ever rewriting stored history), and a rolling uptime bar for the official master.
 * **Manual + Automatic Abuse Handling** – A small curated block-list for hosts doing something worse than ordinary list-padding, visible at `/ignored.html`.
@@ -131,6 +131,10 @@ Daily uptime percentage for a given master, for status-page uptime bars (require
 
 The curated block-list of hosts excluded from the listing entirely (see Manual + Automatic Abuse Handling).
 
+### `GET /api/port-padding`
+
+Every detected clone group broadcasting from multiple ports on one IP (see Clone/Duplicate Collapsing above) — the subset of clone groups considered list padding rather than a tolerated multi-IP mirror.
+
 ---
 
 ## Master UDP
@@ -153,6 +157,7 @@ The frontend is served at `/`. It includes:
 * Click-to-copy IP
 * 🟢/🔴 status indicators, with a broadcast icon and richer hover tooltips for servers sending direct heartbeats
 * `masters.html` — status/uptime for every known master server
+* `port-padding.html` — dashboard of detected same-IP port-padding groups, named for transparency
 * `add-master.html` — per-game `sv_masterN` setup instructions for server owners
 * `fix-ingame-browser.html` — hosts-file fix for players whose in-game browser is empty
 * `ignored.html` — the curated block-list, named for transparency
@@ -190,6 +195,7 @@ q3master/
 │   ├── index.html                  # Main server list
 │   ├── server.html                 # Per-server detail page
 │   ├── masters.html                 # Master server status/uptime
+│   ├── port-padding.html            # Same-IP port-padding dashboard
 │   ├── add-master.html              # Server-owner setup instructions
 │   ├── fix-ingame-browser.html      # Player-facing hosts-file fix
 │   ├── ignored.html                 # Curated block-list
