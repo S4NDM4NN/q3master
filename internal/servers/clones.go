@@ -460,6 +460,71 @@ func LoadCloneGroups(path string) error {
     return nil
 }
 
+// RebuildCloneGroupsFromServerState reconstructs cloneGroups/aliasToPrimary
+// from any AlsoKnownAs already present on loaded ServerEntry values.
+//
+// LoadState/LoadOrSeed (persistence.go) populate serverList -- including
+// AlsoKnownAs, since it's just another field on ServerEntry's JSON schema --
+// straight from a state file or a remote instance's /api/servers response.
+// Neither touches cloneGroups/aliasToPrimary, which live in their own file
+// (clone_groups.json) that a freshly-seeded instance (see SERVER_SEED_URL)
+// never had. Without this, a seeded instance shows padding badges on cards
+// (AlsoKnownAs came along in the seed's JSON) while GetPortPaddingGroups --
+// which reads cloneGroups -- sees nothing, isKnownAlias never blocks the
+// alias addresses from re-entering, and the poller/getservers responder keep
+// treating them as independent entries: the exact "server shows padding on
+// the card but isn't on the dashboard, and its aliases are still being
+// served too" symptom found 2026-08-16 on a PR preview deploy, which -- with
+// no local clone_groups.json yet -- seeds entirely from production's already-
+// collapsed /api/servers.
+//
+// Called once at startup after server state is loaded (LoadOrSeed) and
+// before PurgeIgnored; a no-op past that point since applyCloneGroups keeps
+// deleting alias entries as they're found, so there's nothing left to scan
+// for on any later call.
+func RebuildCloneGroupsFromServerState() {
+    serverMutex.Lock()
+    type seed struct {
+        primary string
+        aka     []AKAEntry
+    }
+    var seeds []seed
+    for addr, s := range serverList {
+        if len(s.AlsoKnownAs) > 0 {
+            seeds = append(seeds, seed{primary: addr, aka: s.AlsoKnownAs})
+        }
+    }
+    serverMutex.Unlock()
+
+    if len(seeds) == 0 {
+        return
+    }
+
+    cloneMutex.Lock()
+    for _, sd := range seeds {
+        if _, exists := cloneGroups[sd.primary]; exists {
+            continue // already known, e.g. loaded from clone_groups.json
+        }
+        cloneGroups[sd.primary] = &CloneGroup{
+            Primary:  sd.primary,
+            AKA:      sd.aka,
+            Reason:   "Inherited from loaded/seeded server state -- the original detection reason wasn't preserved across the load boundary.",
+            Detected: time.Now(),
+        }
+        for _, a := range sd.aka {
+            if _, known := aliasToPrimary[a.Address]; !known {
+                aliasToPrimary[a.Address] = sd.primary
+            }
+        }
+    }
+    cloneMutex.Unlock()
+
+    // Purge any alias addresses that leaked in as their own top-level
+    // entries (possible for every seed/load this reconstructs, since
+    // whatever loaded them had no aliasToPrimary to block them either).
+    applyCloneGroups()
+}
+
 // AliasAddresses returns every address currently known to be a clone-
 // detected alias (folded into some other server -- see CloneGroup), keyed
 // by address with the protocol it was reporting when folded in. This

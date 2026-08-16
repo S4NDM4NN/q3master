@@ -32,6 +32,13 @@ func main() {
     if err := servers.LoadOrSeed(stateFile, seedURL); err != nil {
         fmt.Printf("failed to load/seed server state: %v\n", err)
     }
+    // Loaded/seeded ServerEntry values can carry AlsoKnownAs (it's just
+    // another JSON field) without cloneGroups/aliasToPrimary knowing about
+    // it -- e.g. a freshly-seeded instance with no local clone_groups.json
+    // yet. Reconstruct from what was loaded so the port-padding dashboard,
+    // isKnownAlias, and everything downstream of it stay consistent with
+    // what the cards already show.
+    servers.RebuildCloneGroupsFromServerState()
     servers.PurgeIgnored()
 
     mongoURI := os.Getenv("MONGO_URI")
