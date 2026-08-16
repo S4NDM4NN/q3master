@@ -53,7 +53,15 @@ func main() {
     }
 
     // background workers
-    servers.StartPollWorkers(8)
+    // Raised from 8 on 2026-08-16: with ~1900 known servers (many sharing
+    // an IP, so waitForIPSlot's 750ms per-IP pacing -- unaffected by worker
+    // count -- is what actually bounds traffic to any one target) 8
+    // workers couldn't keep up, leaving up to 62% of currently-online
+    // servers overdue for repoll and some flipping to "offline" purely from
+    // worker starvation rather than actually going down. More workers only
+    // adds parallelism *across* distinct IPs, not burst traffic to any
+    // single one.
+    servers.StartPollWorkers(100)
     servers.StartDiscovery(5*time.Minute, history.RecordMasterSample)
     servers.StartPolling(15 * time.Second)
     servers.StartJanitor()
