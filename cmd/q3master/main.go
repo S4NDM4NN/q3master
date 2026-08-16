@@ -70,6 +70,7 @@ func main() {
     http.HandleFunc("/api/history/master/daily", httpapi.WithCORS(httpapi.ServeMasterDailyUptimeAPI))
     http.HandleFunc("/api/ignored", httpapi.WithCORS(httpapi.ServeIgnoredAPI))
     http.HandleFunc("/api/port-padding", httpapi.WithCORS(httpapi.ServePortPaddingAPI))
+    http.HandleFunc("/api/port-padding/recheck", httpapi.WithCORS(httpapi.ServeRecheckPortPaddingAPI))
     http.Handle("/", http.FileServer(http.Dir("web")))
 
     port := os.Getenv("PORT")

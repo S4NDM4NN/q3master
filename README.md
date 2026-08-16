@@ -134,7 +134,11 @@ The curated block-list of hosts excluded from the listing entirely (see Manual +
 
 ### `GET /api/port-padding`
 
-Every detected clone group (see Clone/Duplicate Collapsing above) with at least one IP holding 2+ of its own addresses — one row per detected clone, matching its one card on the main list, broken down by every IP its own membership (primary and aliases alike) actually clusters on rather than just whichever address was chosen as the group's primary.
+Every detected clone group (see Clone/Duplicate Collapsing above) with at least one IP holding 2+ of its own addresses — one row per detected clone, matching its one card on the main list, broken down by every IP its own membership (primary and aliases alike) actually clusters on rather than just whichever address was chosen as the group's primary. Each alias also reports its ongoing re-verification status (see Self-Correcting Pairings above): `first_paired`, `last_checked`, `check_count`.
+
+### `POST /api/port-padding/recheck?primary=<ip:port>`
+
+Immediately re-verifies every alias in one detected clone group, restricted to `primary` addresses that are already a known padding group (never an arbitrary address) and rate-limited to once every 2 minutes per group. Runs in the background; responds right away with how many addresses were queued.
 
 ---
 

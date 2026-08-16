@@ -31,6 +31,11 @@
   .primary-badge { display:inline-block;background:#0dcaf022;border:1px solid #0dcaf0;color:#0dcaf0;border-radius:4px;padding:0 .35rem;font-size:.7rem;text-transform:uppercase;letter-spacing:.03em; }
   .info-toggle { cursor:pointer;color:#66d9ef;font-size:1.2rem;transition:color .2s ease; }
   .info-toggle:hover { color:#0dcaf0; }
+  .recheck-icon { cursor:pointer;color:#66d9ef;font-size:1.2rem;transition:color .2s ease; }
+  .recheck-icon:hover { color:#0dcaf0; }
+  .recheck-icon.disabled { cursor:default;color:#555;pointer-events:none; }
+  .recheck-icon.spinning { animation: spin 1s linear infinite; }
+  @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
   .ip-block { margin-bottom:1rem; }
   .ip-block:last-child { margin-bottom:0; }
   .ip-block-header { font-size:.85rem;color:#eee;margin-bottom:.3rem; }
@@ -57,7 +62,9 @@
     see the full port breakdown. Every pairing is periodically re-verified with a fresh check
     of its own (starting at 15 minutes for a brand-new pairing, backing off toward once a day
     as it keeps holding up) &mdash; one that no longer matches is automatically unpaired and
-    returned to the main list as its own entry instead of staying wrong forever.
+    returned to the main list as its own entry instead of staying wrong forever. The
+    <i class="bi bi-arrow-clockwise"></i> icon on a row triggers that same check immediately,
+    for that row's addresses only.
   </div>
 
   <div id="padding-container"></div>
@@ -65,13 +72,21 @@
   <script>
     function refreshPortPadding(){
       $.getJSON('/api/port-padding', function(groups){
-        if ($(".collapse.show").length > 0) return; // don't yank an expanded row out from under the user
+        // Re-expand whichever rows were open before this refresh (keyed by
+        // primary, not index -- sort order can shift between refreshes as
+        // port_count changes) instead of skipping the refresh outright.
+        // Otherwise a manual recheck's results (see the .recheck-icon
+        // handler below) would never actually become visible while the
+        // user has that exact row open to watch it.
+        const expanded = new Set();
+        $('.collapse.show').each(function(){ expanded.add($(this).data('primary')); });
 
         const container = $('#padding-container').empty();
         (groups || []).forEach((g, idx) => {
           const dot = g.online ? 'online-dot' : 'offline-dot';
           const hostname = g.hostname ? parseNameColors(g.hostname) : '<em>unknown</em>';
           const collapseId = `pp-${idx}`;
+          const showCls = expanded.has(g.primary) ? ' show' : '';
           const ipBlocks = g.ips.map(ipEntry => {
             const rows = ipEntry.addresses.map(a => {
               const badge = a.is_primary ? '<span class="primary-badge">shown on list</span>' : '';
@@ -95,10 +110,11 @@
                 <span><span class="status-dot ${dot}"></span><code>${g.primary}</code> <span class="q3name">${hostname}</span></span>
                 <span class="d-flex align-items-center gap-3">
                   <span class="server-status">${g.port_count} total ports</span>
+                  <i class="bi bi-arrow-clockwise recheck-icon" data-primary="${g.primary}" role="button" title="Recheck every address in this group now"></i>
                   <i class="bi bi-search info-toggle" data-bs-toggle="collapse" data-bs-target="#${collapseId}" role="button" title="Show details"></i>
                 </span>
               </div>
-              <div id="${collapseId}" class="collapse card-body">
+              <div id="${collapseId}" class="collapse card-body${showCls}" data-primary="${g.primary}">
                 <p class="server-status">${g.reason || ''}</p>
                 <p class="server-status">Detected: ${formatLastSeen(g.detected)}</p>
                 ${ipBlocks}
@@ -110,6 +126,34 @@
     }
     refreshPortPadding();
     setInterval(refreshPortPadding, 30000);
+
+    // Manual "recheck now" -- restricted server-side to addresses already
+    // in a detected clone group (see servers.TriggerGroupRecheck), rate-
+    // limited per group. Delegated since cards are rebuilt on every refresh.
+    $(document).on('click', '.recheck-icon', function(e){
+      e.preventDefault();
+      e.stopPropagation(); // don't also toggle the details collapse underneath it
+      const $icon = $(this);
+      if ($icon.hasClass('disabled')) return;
+      const primary = $icon.data('primary');
+      $icon.addClass('disabled spinning').attr('title', 'Rechecking…');
+      $.post('/api/port-padding/recheck?primary=' + encodeURIComponent(primary))
+        .done(function(resp){
+          if (resp.status === 'cooldown') {
+            $icon.attr('title', `Already rechecked recently — try again in ~${resp.retry_after_seconds}s`);
+          } else {
+            $icon.attr('title', `Rechecking ${resp.queued} address${resp.queued===1?'':'es'} — results will appear shortly`);
+            setTimeout(refreshPortPadding, 8000);
+          }
+        })
+        .fail(function(xhr){
+          $icon.attr('title', xhr.responseText || 'Recheck failed');
+        })
+        .always(function(){
+          $icon.removeClass('spinning');
+          setTimeout(() => $icon.removeClass('disabled'), 5000);
+        });
+    });
   </script>
 </body>
 </html>

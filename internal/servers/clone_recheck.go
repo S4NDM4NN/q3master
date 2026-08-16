@@ -1,8 +1,10 @@
 package servers
 
 import (
+    "errors"
     "fmt"
     "sort"
+    "sync"
     "time"
 )
 
@@ -268,6 +270,13 @@ func unpairAlias(primaryAddr, aliasAddr string, fresh *ServerEntry) {
     delete(aliasToPrimary, aliasAddr)
     cloneMutex.Unlock()
 
+    // applyCloneGroups re-stamps every primary's ServerEntry.AlsoKnownAs
+    // from the current (now alias-removed) cloneGroups state -- without
+    // this, primary's card would keep showing aliasAddr in its "also
+    // broadcasting as" list until the next scheduled detectClones tick (up
+    // to 5 minutes later) happened to refresh it.
+    applyCloneGroups()
+
     fresh.Address = aliasAddr
     fresh.State = StateOnline
     fresh.Online = true
@@ -279,4 +288,67 @@ func unpairAlias(primaryAddr, aliasAddr string, fresh *ServerEntry) {
     serverMutex.Unlock()
 
     fmt.Printf("unpaired %s from clone group %s: no longer matches its primary on recheck\n", aliasAddr, primaryAddr)
+}
+
+// manualRecheckCooldown bounds how often the same group's manual "recheck
+// now" trigger (see TriggerGroupRecheck) can be fired, so repeated clicking
+// -- or a script hitting the endpoint directly -- can't turn a deliberately
+// restricted button into an unbounded traffic amplifier against someone
+// else's server. Ordinary scheduled rechecking already sends this same kind
+// of traffic periodically anyway; this just stops it from happening far
+// more often than that.
+const manualRecheckCooldown = 2 * time.Minute
+
+var (
+    manualRecheckMutex sync.Mutex
+    lastManualRecheck  = make(map[string]time.Time) // primary address -> when last manually triggered
+)
+
+// ErrUnknownPaddingGroup is returned by TriggerGroupRecheck when primary
+// doesn't name a currently-detected clone group with at least one alias --
+// the manual trigger can only ever act on an address clone detection has
+// already flagged, never an arbitrary one.
+var ErrUnknownPaddingGroup = errors.New("not a known port-padding group")
+
+// TriggerGroupRecheck kicks off an immediate recheck of every alias
+// currently in primary's clone group, restricted to primaries that are
+// actually known clone groups with aliases -- this can never be used to
+// poll an arbitrary address, only to accelerate verification of an
+// already-detected pairing. Runs the actual rechecks in the background
+// (a large group can take a while -- each alias is still paced through the
+// same per-IP throttling as ordinary polling); returns immediately with how
+// many aliases were queued. cooldownRemaining is >0 (with queued 0, err
+// nil) if the group was already manually triggered too recently.
+func TriggerGroupRecheck(primary string) (queued int, cooldownRemaining time.Duration, err error) {
+    cloneMutex.Lock()
+    g, ok := cloneGroups[primary]
+    var aliases []string
+    if ok {
+        for _, a := range g.AKA {
+            aliases = append(aliases, a.Address)
+        }
+    }
+    cloneMutex.Unlock()
+
+    if !ok || len(aliases) == 0 {
+        return 0, 0, ErrUnknownPaddingGroup
+    }
+
+    manualRecheckMutex.Lock()
+    if last, seen := lastManualRecheck[primary]; seen {
+        if remaining := manualRecheckCooldown - time.Since(last); remaining > 0 {
+            manualRecheckMutex.Unlock()
+            return 0, remaining, nil
+        }
+    }
+    lastManualRecheck[primary] = time.Now()
+    manualRecheckMutex.Unlock()
+
+    go func() {
+        for _, alias := range aliases {
+            recheckOne(primary, alias)
+        }
+    }()
+
+    return len(aliases), 0, nil
 }

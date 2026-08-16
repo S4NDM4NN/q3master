@@ -144,3 +144,42 @@ func ServePortPaddingAPI(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(servers.GetPortPaddingGroups())
 }
 
+// ServeRecheckPortPaddingAPI kicks off an immediate re-verification of
+// every alias in one detected clone group (see servers.TriggerGroupRecheck)
+// -- restricted to already-known padding groups, never an arbitrary
+// address, and rate-limited per group. POST only. Query param: primary
+// (required, must exactly match a currently-detected clone group's primary
+// address).
+func ServeRecheckPortPaddingAPI(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "POST required", http.StatusMethodNotAllowed)
+        return
+    }
+    primary := r.URL.Query().Get("primary")
+    if primary == "" {
+        http.Error(w, "missing primary parameter", http.StatusBadRequest)
+        return
+    }
+
+    queued, cooldown, err := servers.TriggerGroupRecheck(primary)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusNotFound)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    if cooldown > 0 {
+        w.WriteHeader(http.StatusTooManyRequests)
+        _ = json.NewEncoder(w).Encode(map[string]any{
+            "status":              "cooldown",
+            "retry_after_seconds": int(cooldown.Seconds()),
+        })
+        return
+    }
+    _ = json.NewEncoder(w).Encode(map[string]any{
+        "status":  "started",
+        "primary": primary,
+        "queued":  queued,
+    })
+}
+
