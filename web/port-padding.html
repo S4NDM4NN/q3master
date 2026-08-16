@@ -28,8 +28,9 @@
   .online-dot { background:#4caf50; }
   .offline-dot { background:#f44336; }
   .padding-icon { color:#f0ad4e; }
-  .other-ip-note { font-size:.85rem;color:#999;margin-top:.75rem; }
-  .other-ip-note .source-badge { display:inline-block;background:#222;border:1px solid #333;border-radius:4px;padding:.1rem .5rem;font-size:.8rem;margin:.15rem .25rem .15rem 0;color:#ccc; }
+  .primary-badge { display:inline-block;background:#0dcaf022;border:1px solid #0dcaf0;color:#0dcaf0;border-radius:4px;padding:0 .35rem;font-size:.7rem;text-transform:uppercase;letter-spacing:.03em; }
+  .groups-note { font-size:.85rem;color:#999;margin-bottom:1rem; }
+  .reason-block { border-left:3px solid #333;padding:.4rem .75rem;margin-bottom:.5rem;font-size:.85rem;color:#bbb; }
   #padding-container:empty::after { content:"No port padding detected right now."; color:#888; font-size:.9rem; }
 </style>
 </head>
@@ -43,43 +44,48 @@
   <div class="callout callout-warn">
     A server mirroring itself across a few genuinely different IPs is fine &mdash; that's shown
     on the main list as an ordinary "also broadcasting as" note. What's listed here is
-    different: a single server broadcasting itself from <strong>many ports on the same IP</strong>,
-    almost always via a UDP proxy, purely to inflate how many times it appears. These are
-    still collapsed to one entry and still served to clients querying this master &mdash; nothing
-    here is dropped, this page exists so the padding is visible rather than silently absorbed.
+    different: <strong>many ports on the same IP</strong> that clone detection has linked
+    together, almost always via a UDP proxy, purely to inflate how many times it appears.
+    Every address on an IP counts here, not just ones that happen to match whichever address
+    clone detection picked as that group's "primary" &mdash; a busy padding operation can span
+    more than one detected group, and all of them are combined into one row per IP below.
+    These are still collapsed to one entry each and still served to clients querying this
+    master &mdash; nothing here is dropped, this page exists so the padding is visible rather
+    than silently absorbed.
   </div>
 
   <div id="padding-container"></div>
 
   <script>
     function refreshPortPadding(){
-      $.getJSON('/api/port-padding', function(groups){
+      $.getJSON('/api/port-padding', function(views){
         const container = $('#padding-container').empty();
-        (groups || []).forEach(g => {
-          const dot = g.online ? 'online-dot' : 'offline-dot';
-          const hostname = g.hostname ? parseNameColors(g.hostname) : '<em>unknown</em>';
-          const rows = (g.same_ip_aka || []).map(a =>
-            `<tr><td><code>${a.address}</code></td><td class="q3name">${a.hostname ? parseNameColors(a.hostname) : '<em>—</em>'}</td></tr>`
-          ).join('');
-          const otherIPs = (g.other_ip_aka || []).length
-            ? `<div class="other-ip-note">Also mirrored on other IPs (not counted as padding): ${
-                g.other_ip_aka.map(a => `<span class="source-badge">${a.address}</span>`).join('')
-              }</div>`
+        (views || []).forEach(v => {
+          const groupsNote = v.groups.length > 1
+            ? `<div class="groups-note">Spans ${v.groups.length} separately-detected clone groups, combined here as one IP:</div>`
             : '';
+          const reasonBlocks = v.groups.map(g =>
+            `<div class="reason-block">${g.reason || ''}<br>Detected: ${formatLastSeen(g.detected)}</div>`
+          ).join('');
+          const rows = v.members.map(m => {
+            const dot = m.is_primary ? `<span class="status-dot ${m.online ? 'online-dot' : 'offline-dot'}"></span>` : '';
+            const badge = m.is_primary ? '<span class="primary-badge">shown on list</span>' : '';
+            const hostname = m.hostname ? parseNameColors(m.hostname) : '<em>—</em>';
+            return `<tr><td>${dot}<code>${m.address}</code></td><td>${badge}</td><td class="q3name">${hostname}</td></tr>`;
+          }).join('');
           container.append(`
             <div class="card">
               <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-                <span><span class="status-dot ${dot}"></span><code>${g.primary}</code> <span class="q3name">${hostname}</span></span>
-                <span class="server-status">${g.port_count} ports on ${g.ip}</span>
+                <span><i class="bi bi-exclamation-triangle-fill padding-icon"></i> <code>${v.ip}</code></span>
+                <span class="server-status">${v.port_count} ports</span>
               </div>
               <div class="card-body">
-                <p class="server-status">${g.reason || ''}</p>
-                <p class="server-status">Detected: ${formatLastSeen(g.detected)}</p>
+                ${groupsNote}
+                ${reasonBlocks}
                 <table>
-                  <tr><th>Also broadcasting from</th><th>Hostname when folded in</th></tr>
+                  <tr><th>Address</th><th></th><th>Hostname</th></tr>
                   ${rows}
                 </table>
-                ${otherIPs}
               </div>
             </div>
           `);

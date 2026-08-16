@@ -133,7 +133,7 @@ The curated block-list of hosts excluded from the listing entirely (see Manual +
 
 ### `GET /api/port-padding`
 
-Every detected clone group broadcasting from multiple ports on one IP (see Clone/Duplicate Collapsing above) — the subset of clone groups considered list padding rather than a tolerated multi-IP mirror.
+Every IP with 2+ addresses involved in clone detection (see Clone/Duplicate Collapsing above), aggregated across every clone group's full membership rather than just each group's chosen primary — so the same padding operation split across multiple detected groups, or an alias cluster sitting on a non-primary IP, still shows as one combined total for that IP instead of being missed or shown fragmented.
 
 ---
 

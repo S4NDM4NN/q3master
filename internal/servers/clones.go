@@ -546,26 +546,63 @@ func AliasAddresses() map[string]int {
     return out
 }
 
-// PortPaddingView is one detected CloneGroup that includes at least one
-// alias on the *same IP* as its primary -- i.e. a single server broadcasting
-// from several ports on one address to inflate its presence on the list.
-// Mirrors across genuinely different IPs are a separate, tolerated case and
-// are reported here (OtherIPAKA) without being what earns the flag.
-type PortPaddingView struct {
-    Primary    string     `json:"primary"`
-    IP         string     `json:"ip"`
-    Hostname   string     `json:"hostname"`
-    Online     bool       `json:"online"`
-    PortCount  int        `json:"port_count"` // 1 (primary) + len(SameIPAKA)
-    SameIPAKA  []AKAEntry `json:"same_ip_aka"`
-    OtherIPAKA []AKAEntry `json:"other_ip_aka"`
-    Reason     string     `json:"reason"`
-    Detected   time.Time  `json:"detected"`
+// PortPaddingMember is one address involved in a detected padding IP --
+// either the surviving primary of its clone group, or one of the aliases
+// folded into it. See PortPaddingView's doc comment for why membership is
+// tracked this way instead of just "matches this IP's primary."
+type PortPaddingMember struct {
+    Address      string `json:"address"`
+    IsPrimary    bool   `json:"is_primary"`
+    Hostname     string `json:"hostname"` // live (serverList) for a primary; a one-time fold-in snapshot for an alias
+    Online       bool   `json:"online"`   // only meaningful for a primary -- aliases are never independently polled again
+    GroupPrimary string `json:"group_primary"` // which CloneGroup (by its Primary) this member's own group is keyed by
 }
 
-// GetPortPaddingGroups returns every clone group with at least one same-IP
-// alias, most ports first. CloneGroup.Reason and Detected are already
-// recorded by mergeGroup but have never been exposed anywhere until now.
+// PortPaddingGroupInfo is the detection metadata for one clone group that
+// contributed at least one member to a PortPaddingView.
+type PortPaddingGroupInfo struct {
+    Primary  string    `json:"primary"`
+    Reason   string    `json:"reason"`
+    Detected time.Time `json:"detected"`
+}
+
+// PortPaddingView is every address -- across every detected clone group,
+// regardless of which one happens to be chosen as each group's primary --
+// that shares one IP: this IP's actual padding footprint.
+//
+// An earlier version of this only compared each clone group's aliases
+// against its OWN primary's IP, which missed two real cases found
+// 2026-08-16 against production data:
+//
+//  1. The same padding operation split across several separate CloneGroups
+//     (tier 1's per-run roster matching can fail to link every address of a
+//     busy multi-port relay into one group -- see detectClones' doc comment
+//     -- so e.g. 66.228.61.181 held two entirely separate groups, primaries
+//     32036 and 32051, neither aware of the other).
+//  2. A clone group's primary chosen on one IP (mergeGroup picks by
+//     earliest FirstSeen, unrelated to which IP has the most members) while
+//     the bulk of its aliases actually cluster on a *different* IP -- e.g.
+//     172.104.253.108:32026's clone group had 79 total aliases, only 21 on
+//     its own IP; the other 58 were being reported as tolerated "other IP"
+//     mirrors even though 18 of them shared 172.233.19.61, 26 shared
+//     50.116.39.92, and 14 shared 66.42.93.111 -- each obviously padding for
+//     *that* IP, just never checked against each other.
+//
+// Aggregating by every member's own IP, across every group, catches both:
+// two groups landing on the same IP merge into one view automatically, and
+// an alias cluster on a non-primary IP gets its own view instead of being
+// waved through as tolerated.
+type PortPaddingView struct {
+    IP        string                  `json:"ip"`
+    PortCount int                     `json:"port_count"`
+    Members   []PortPaddingMember     `json:"members"`
+    Groups    []PortPaddingGroupInfo  `json:"groups"`
+}
+
+// GetPortPaddingGroups returns every IP with 2+ clone-group members on it
+// (see PortPaddingView), most ports first. CloneGroup.Reason and Detected
+// are already recorded by mergeGroup but were never exposed anywhere until
+// now.
 func GetPortPaddingGroups() []PortPaddingView {
     cloneMutex.Lock()
     defer cloneMutex.Unlock()
@@ -573,46 +610,58 @@ func GetPortPaddingGroups() []PortPaddingView {
     serverMutex.Lock()
     defer serverMutex.Unlock()
 
-    var out []PortPaddingView
+    byIP := make(map[string]*PortPaddingView)
+    groupSeenOnIP := make(map[string]map[string]bool) // ip -> group primary -> already added to that view's Groups
+
+    addMember := func(ip string, m PortPaddingMember, g *CloneGroup) {
+        view, ok := byIP[ip]
+        if !ok {
+            view = &PortPaddingView{IP: ip}
+            byIP[ip] = view
+            groupSeenOnIP[ip] = make(map[string]bool)
+        }
+        view.Members = append(view.Members, m)
+        if !groupSeenOnIP[ip][g.Primary] {
+            groupSeenOnIP[ip][g.Primary] = true
+            view.Groups = append(view.Groups, PortPaddingGroupInfo{Primary: g.Primary, Reason: g.Reason, Detected: g.Detected})
+        }
+    }
+
     for _, g := range cloneGroups {
-        primaryIP := ipOf(g.Primary)
-        var sameIP, otherIP []AKAEntry
-        for _, a := range g.AKA {
-            if ipOf(a.Address) == primaryIP {
-                sameIP = append(sameIP, a)
-            } else {
-                otherIP = append(otherIP, a)
-            }
-        }
-        if len(sameIP) == 0 {
-            continue
-        }
-
-        var hostname string
-        var online bool
+        var primaryHostname string
+        var primaryOnline bool
         if entry, ok := serverList[g.Primary]; ok {
-            hostname = entry.Hostname
-            online = entry.Online
+            primaryHostname = entry.Hostname
+            primaryOnline = entry.Online
         }
+        addMember(ipOf(g.Primary), PortPaddingMember{
+            Address: g.Primary, IsPrimary: true, Hostname: primaryHostname, Online: primaryOnline, GroupPrimary: g.Primary,
+        }, g)
 
-        out = append(out, PortPaddingView{
-            Primary:    g.Primary,
-            IP:         primaryIP,
-            Hostname:   hostname,
-            Online:     online,
-            PortCount:  1 + len(sameIP),
-            SameIPAKA:  sameIP,
-            OtherIPAKA: otherIP,
-            Reason:     g.Reason,
-            Detected:   g.Detected,
-        })
+        for _, a := range g.AKA {
+            addMember(ipOf(a.Address), PortPaddingMember{
+                Address: a.Address, IsPrimary: false, Hostname: a.Hostname, GroupPrimary: g.Primary,
+            }, g)
+        }
+    }
+
+    out := make([]PortPaddingView, 0, len(byIP))
+    for ip, view := range byIP {
+        if len(view.Members) < 2 {
+            continue // a lone address on this IP isn't padding
+        }
+        view.IP = ip
+        view.PortCount = len(view.Members)
+        sort.Slice(view.Members, func(i, j int) bool { return view.Members[i].Address < view.Members[j].Address })
+        sort.Slice(view.Groups, func(i, j int) bool { return view.Groups[i].Primary < view.Groups[j].Primary })
+        out = append(out, *view)
     }
 
     sort.Slice(out, func(i, j int) bool {
         if out[i].PortCount != out[j].PortCount {
             return out[i].PortCount > out[j].PortCount
         }
-        return out[i].Primary < out[j].Primary
+        return out[i].IP < out[j].IP
     })
     return out
 }

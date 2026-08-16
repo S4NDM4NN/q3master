@@ -408,17 +408,42 @@ function ipOf(addr) {
 // different IP. This is the "port padding" case: one server broadcasting
 // itself from many ports on one host to inflate its presence on the list,
 // as opposed to a tolerated multi-IP mirror (see clones.go's PortPaddingView
-// doc comment for the policy this mirrors server-side).
+// doc comment for the policy this mirrors server-side). This is also what
+// decides whether a card gets the warning badge at all -- a server that
+// hasn't itself been detected as a same-IP clone stays unflagged even if
+// some unrelated server elsewhere happens to share its IP (see
+// ipPaddingTotals below for that "elsewhere" context, shown only once a
+// server already qualifies for the badge on its own).
 function portPaddingAliases(server) {
   const primaryIP = ipOf(server.address);
   return (server.also_known_as || []).filter(e => ipOf(e.address) === primaryIP);
+}
+
+// Cross-page cache of {ip: total_port_count} from /api/port-padding,
+// refreshed independently of the main server list. GetPortPaddingGroups
+// (clones.go) aggregates by every clone-group member's own IP, not just
+// whichever address happens to be each group's chosen primary -- so an IP's
+// true padding total can be larger than what any single card's own
+// also_known_as shows (e.g. the same operation split across more than one
+// detected clone group, or an alias cluster sitting on a non-primary IP).
+// portPaddingBadge uses this so the tooltip reports the honest combined
+// total instead of just this one card's own slice of it.
+let ipPaddingTotals = {};
+function refreshIPPaddingTotals(){
+  $.getJSON('/api/port-padding', function(views){
+    const totals = {};
+    (views || []).forEach(v => { totals[v.ip] = v.port_count; });
+    ipPaddingTotals = totals;
+  });
 }
 
 // Warning-icon badge for a server whose also_known_as includes same-IP
 // aliases (see portPaddingAliases) -- '' if there are none. Links to the
 // port-padding dashboard; the native title= tooltip (this project doesn't
 // initialize Bootstrap's JS tooltip component anywhere, so plain title= is
-// the established pattern) names the exact ports folded in.
+// the established pattern) names the exact ports folded in, plus the IP's
+// combined total (see ipPaddingTotals) when it's larger than this card's own
+// count.
 function portPaddingBadge(server) {
   const padded = portPaddingAliases(server);
   if (padded.length === 0) return '';
@@ -426,7 +451,13 @@ function portPaddingBadge(server) {
     const i = e.address.lastIndexOf(':');
     return i === -1 ? e.address : e.address.slice(i + 1);
   }).join(', ');
-  const title = `Port padding: also broadcasting from ${padded.length} other port${padded.length === 1 ? '' : 's'} on this same IP (${ports}) — collapsed into this one entry.`;
+  const ownTotal = 1 + padded.length;
+  const ip = ipOf(server.address);
+  const ipTotal = ipPaddingTotals[ip];
+  const combinedNote = (ipTotal && ipTotal > ownTotal)
+    ? ` This IP has ${ipTotal} padded ports total once every detected group on it is combined — see the port-padding page for the full picture.`
+    : '';
+  const title = `Port padding: also broadcasting from ${padded.length} other port${padded.length === 1 ? '' : 's'} on this same IP (${ports}) — collapsed into this one entry.${combinedNote}`;
   return `<a href="port-padding.html" title="${title}"><i class="bi bi-exclamation-triangle-fill padding-icon ms-1"></i></a>`;
 }
 

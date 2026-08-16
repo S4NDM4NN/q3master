@@ -214,9 +214,11 @@
     if (!address){
       $('#not-found').text('No server address given.').show();
     } else {
+      refreshIPPaddingTotals();
       loadServer();
       loadHistory('7d');
       setInterval(loadServer, 15000);
+      setInterval(refreshIPPaddingTotals, 30000);
       window.addEventListener('resize', debounce(() => loadHistory($("input[name='range']:checked").val() || '7d'), 200));
     }
   </script>
