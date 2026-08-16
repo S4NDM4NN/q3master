@@ -314,7 +314,11 @@ func detectClones() {
 // mergeGroup folds addrs (2+ addresses already confirmed to be the same
 // clone) into cloneGroups, picking or reusing a stable primary, and records
 // each alias's hostname at the moment it was folded in (a one-time
-// snapshot -- see AKAEntry). Caller holds cloneMutex.
+// snapshot -- see AKAEntry). If addrs happens to include more than one
+// address that was already its own group's primary (two previously-
+// separate fragments finally matching each other), the losing primary's
+// own group is absorbed transitively rather than left behind as an orphan
+// -- see the loop below. Caller holds cloneMutex.
 //
 // An address already in aliasToPrimary can never appear in addrs here --
 // detectClones only ever considers addresses currently in serverList, and
@@ -351,6 +355,33 @@ func mergeGroup(addrs []string, firstSeen map[string]time.Time, hostnameOf map[s
         }
         akaMap[a] = AKAEntry{Address: a, Hostname: hostnameOf[a], Protocol: protocolOf[a], FirstPaired: time.Now()}
         aliasToPrimary[a] = primary
+
+        // a may itself have been an existing primary with its own group --
+        // two previously-separate fragments finally recognized as the same
+        // operation in this run (existingPrimaryFor above only keeps ONE of
+        // them as the surviving primary). Absorb the loser's aliases
+        // transitively instead of leaving its group behind as an instant
+        // orphan the instant a's own ServerEntry gets deleted (via
+        // applyCloneGroups, since a is now listed as primary's alias).
+        // Found 2026-08-16: 172.104.253.108:32039 had its own 15-alias
+        // group; once detectClones finally matched it against
+        // 172.104.253.108:32026's bigger group, 32039 folded in here as a
+        // plain new alias but its old group was never touched -- orphaning
+        // it and all 15 of ITS aliases within one detection cycle. Not
+        // caught by releaseOrphanedGroups (janitor.go): that only triggers
+        // on eviction, and 32039 was never evicted, just absorbed.
+        if oldGroup, wasPrimary := cloneGroups[a]; wasPrimary {
+            for _, oa := range oldGroup.AKA {
+                // Preserve FirstPaired/LastChecked/CheckCount -- these were
+                // already independently verified against a, and a is now
+                // confirmed to be the same as primary, so their trust
+                // history is still valid; this isn't a fresh pairing the
+                // way clone_recheck.go's unpair/re-pair is.
+                akaMap[oa.Address] = oa
+                aliasToPrimary[oa.Address] = primary
+            }
+            delete(cloneGroups, a)
+        }
     }
     aka := make([]AKAEntry, 0, len(akaMap))
     for _, e := range akaMap {
