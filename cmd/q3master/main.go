@@ -39,6 +39,11 @@ func main() {
     // isKnownAlias, and everything downstream of it stay consistent with
     // what the cards already show.
     servers.RebuildCloneGroupsFromServerState()
+    // Catches clone groups whose primary was evicted (offline 7+ days, or
+    // 10+ missed polls while never-online) at some point before this
+    // startup -- StartJanitor's own cleanup only ever sees evictions from
+    // here on, not ones that already happened in a previous run.
+    servers.ReleaseAlreadyOrphanedGroups()
     servers.PurgeIgnored()
 
     mongoURI := os.Getenv("MONGO_URI")

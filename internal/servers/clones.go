@@ -580,6 +580,100 @@ func RebuildCloneGroupsFromServerState() {
     applyCloneGroups()
 }
 
+// releaseOrphanedGroups checks each of evicted (addresses the janitor just
+// removed from serverList) against cloneGroups: if one was a clone group's
+// primary, the whole group is now orphaned. Without this, it would sit on
+// the port-padding dashboard forever showing a blank hostname and "offline"
+// (GetPortPaddingGroups falls back gracefully when the primary is missing
+// from serverList, which is what makes an orphan look plausible instead of
+// broken) while every one of its aliases stays permanently excluded from
+// discovery/polling/serving via isKnownAlias, even though nothing is
+// verifying them anymore -- clone_recheck.go's scheduled/manual recheck
+// both skip an alias whose primary isn't currently online, which "primary
+// doesn't exist at all" satisfies just as much as "temporarily down" does,
+// so recheck alone can never recover this case. Found 2026-08-16: 4 of 5
+// fragments of one A51 network had already lost their primary this way.
+//
+// Releases the group: deletes the CloneGroup record and restores each
+// alias as an independent, freshly pollable ServerEntry -- exactly like
+// unpairAlias (clone_recheck.go), just triggered by the primary
+// disappearing instead of a content mismatch on recheck.
+func releaseOrphanedGroups(evicted []string) {
+    if len(evicted) == 0 {
+        return
+    }
+
+    var toRestore []AKAEntry
+
+    cloneMutex.Lock()
+    for _, primary := range evicted {
+        g, ok := cloneGroups[primary]
+        if !ok {
+            continue
+        }
+        for _, a := range g.AKA {
+            delete(aliasToPrimary, a.Address)
+        }
+        toRestore = append(toRestore, g.AKA...)
+        delete(cloneGroups, primary)
+    }
+    cloneMutex.Unlock()
+
+    if len(toRestore) == 0 {
+        return
+    }
+
+    now := time.Now()
+    serverMutex.Lock()
+    for _, a := range toRestore {
+        if _, exists := serverList[a.Address]; exists {
+            continue // shouldn't happen (isKnownAlias blocked it until just now), but don't clobber if it does
+        }
+        serverList[a.Address] = &ServerEntry{
+            Address:     a.Address,
+            Protocol:    a.Protocol,
+            Hostname:    a.Hostname,
+            State:       StateNew,
+            FirstSeen:   now,
+            LastAttempt: time.Time{},
+        }
+    }
+    serverMutex.Unlock()
+
+    for _, a := range toRestore {
+        EnqueuePoll(a.Address)
+    }
+
+    fmt.Printf("released %d alias(es) from %d orphaned clone group(s) (primary evicted)\n", len(toRestore), len(evicted))
+}
+
+// ReleaseAlreadyOrphanedGroups scans every known clone group for a primary
+// that's already missing from serverList and releases it (see
+// releaseOrphanedGroups) -- e.g. evicted before this cleanup existed, or
+// between one run's eviction and the next restart. StartJanitor's own call
+// to releaseOrphanedGroups only ever sees primaries *it* evicts from that
+// point on; this is what catches everything already orphaned before that.
+// Call once at startup, after server state is loaded/reconstructed.
+func ReleaseAlreadyOrphanedGroups() {
+    cloneMutex.Lock()
+    primaries := make([]string, 0, len(cloneGroups))
+    for primary := range cloneGroups {
+        primaries = append(primaries, primary)
+    }
+    cloneMutex.Unlock()
+
+    serverMutex.Lock()
+    var orphaned []string
+    for _, primary := range primaries {
+        if _, ok := serverList[primary]; !ok {
+            orphaned = append(orphaned, primary)
+        }
+    }
+    serverMutex.Unlock()
+
+    releaseOrphanedGroups(orphaned)
+}
+
 // AliasAddresses returns every address currently known to be a clone-
 // detected alias (folded into some other server -- see CloneGroup), keyed
 // by address with the protocol it was reporting when folded in. This
