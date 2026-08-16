@@ -104,6 +104,18 @@ const matchTimeTolerance = 8 * time.Second
 // essentially never share all but one or two of their real players' exact
 // chosen nicknames.
 //
+// Raised from 2 to 4 on 2026-08-16: the same A51 network kept showing up
+// split across multiple separate clone groups on the port-padding dashboard
+// -- one concrete case, "*A51* FFA" on 172.104.253.108, had 172.104.253.108:
+// 32026 and :32036 both online with 14 of their 16 real players identical
+// (a symmetric diff of 4) but staying two unrelated-looking entries because
+// the old tolerance of 2 rejected them. A second, larger case spanned 5
+// separate clone groups (138 total addresses) for what's evidently one
+// physical relay across 4 IPs. Still gated by realRosterMinSize=6 on both
+// sides, so the coincidence risk this guards against doesn't meaningfully
+// change: a stranger matching 12+ of 16 real chosen nicknames by chance is
+// no more plausible than matching 14+ of 16 was.
+//
 // The size floor applies even to a byte-identical (0-drift) match -- it
 // used to only gate the fuzzy path, which meant two totally unrelated
 // servers that each happened to have exactly one real player who'd never
@@ -117,7 +129,7 @@ const matchTimeTolerance = 8 * time.Second
 // unlikely" the way a whole populated roster matching is.
 const (
     realRosterMinSize  = 6
-    realRosterMaxDrift = 2
+    realRosterMaxDrift = 4
 )
 
 // detectClones groups all known online servers by content and collapses
