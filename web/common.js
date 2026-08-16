@@ -403,61 +403,39 @@ function ipOf(addr) {
   return i === -1 ? (addr || '') : addr.slice(0, i);
 }
 
-// Returns the subset of server.also_known_as entries that share server's own
-// IP -- i.e. other ports on the same address, not a mirror on a genuinely
-// different IP. This is the "port padding" case: one server broadcasting
-// itself from many ports on one host to inflate its presence on the list,
-// as opposed to a tolerated multi-IP mirror (see clones.go's PortPaddingView
-// doc comment for the policy this mirrors server-side). This is also what
-// decides whether a card gets the warning badge at all -- a server that
-// hasn't itself been detected as a same-IP clone stays unflagged even if
-// some unrelated server elsewhere happens to share its IP (see
-// ipPaddingTotals below for that "elsewhere" context, shown only once a
-// server already qualifies for the badge on its own).
-function portPaddingAliases(server) {
-  const primaryIP = ipOf(server.address);
-  return (server.also_known_as || []).filter(e => ipOf(e.address) === primaryIP);
-}
-
-// Cross-page cache of {ip: total_port_count} from /api/port-padding,
-// refreshed independently of the main server list. GetPortPaddingGroups
-// (clones.go) aggregates by every clone-group member's own IP, not just
-// whichever address happens to be each group's chosen primary -- so an IP's
-// true padding total can be larger than what any single card's own
-// also_known_as shows (e.g. the same operation split across more than one
-// detected clone group, or an alias cluster sitting on a non-primary IP).
-// portPaddingBadge uses this so the tooltip reports the honest combined
-// total instead of just this one card's own slice of it.
-let ipPaddingTotals = {};
-function refreshIPPaddingTotals(){
-  $.getJSON('/api/port-padding', function(views){
-    const totals = {};
-    (views || []).forEach(v => { totals[v.ip] = v.port_count; });
-    ipPaddingTotals = totals;
+// Groups server.address + server.also_known_as by IP, returning only the
+// IPs with 2+ addresses from this one clone group -- i.e. this specific
+// detected "cloned server"'s own port-padding footprint, computed the same
+// way GetPortPaddingGroups (clones.go) computes it server-side: every
+// address in the group checked against every other, not just aliases
+// against the primary (a group's aliases can cluster heavily on some OTHER
+// IP than the primary's own -- see clones.go's PortPaddingView doc comment).
+// Returns [{ip, addrs: [address, ...]}], biggest cluster first.
+function portPaddingIPClusters(server) {
+  const all = [server.address].concat((server.also_known_as || []).map(e => e.address));
+  const byIP = new Map();
+  all.forEach(addr => {
+    const ip = ipOf(addr);
+    if (!byIP.has(ip)) byIP.set(ip, []);
+    byIP.get(ip).push(addr);
   });
+  return [...byIP.entries()]
+    .filter(([, addrs]) => addrs.length >= 2)
+    .map(([ip, addrs]) => ({ ip, addrs }))
+    .sort((a, b) => b.addrs.length - a.addrs.length);
 }
 
-// Warning-icon badge for a server whose also_known_as includes same-IP
-// aliases (see portPaddingAliases) -- '' if there are none. Links to the
+// Warning-icon badge for a server with at least one same-clone-group IP
+// cluster (see portPaddingIPClusters) -- '' if there are none. Links to the
 // port-padding dashboard; the native title= tooltip (this project doesn't
 // initialize Bootstrap's JS tooltip component anywhere, so plain title= is
-// the established pattern) names the exact ports folded in, plus the IP's
-// combined total (see ipPaddingTotals) when it's larger than this card's own
-// count.
+// the established pattern) names every clustered IP and its port count.
 function portPaddingBadge(server) {
-  const padded = portPaddingAliases(server);
-  if (padded.length === 0) return '';
-  const ports = padded.map(e => {
-    const i = e.address.lastIndexOf(':');
-    return i === -1 ? e.address : e.address.slice(i + 1);
-  }).join(', ');
-  const ownTotal = 1 + padded.length;
-  const ip = ipOf(server.address);
-  const ipTotal = ipPaddingTotals[ip];
-  const combinedNote = (ipTotal && ipTotal > ownTotal)
-    ? ` This IP has ${ipTotal} padded ports total once every detected group on it is combined — see the port-padding page for the full picture.`
-    : '';
-  const title = `Port padding: also broadcasting from ${padded.length} other port${padded.length === 1 ? '' : 's'} on this same IP (${ports}) — collapsed into this one entry.${combinedNote}`;
+  const clusters = portPaddingIPClusters(server);
+  if (clusters.length === 0) return '';
+  const totalPadded = clusters.reduce((sum, c) => sum + c.addrs.length, 0);
+  const breakdown = clusters.map(c => `${c.ip} (${c.addrs.length})`).join(', ');
+  const title = `Port padding: ${totalPadded} ports across ${clusters.length} IP${clusters.length === 1 ? '' : 's'} detected as this same server (${breakdown}) — collapsed into this one entry.`;
   return `<a href="port-padding.html" title="${title}"><i class="bi bi-exclamation-triangle-fill padding-icon ms-1"></i></a>`;
 }
 
@@ -470,15 +448,18 @@ function portPaddingBadge(server) {
 // it's shown alongside the address rather than replacing it. Shown as small
 // pill badges, same visual language as formatSources, so it reads as
 // "here's the honest picture" rather than a callout. When primaryAddress is
-// given, aliases sharing its IP (port padding, see portPaddingAliases) get
-// the amber "padding" style instead of the neutral one, so the distinction
+// given, aliases in a padding IP cluster (see portPaddingIPClusters) get the
+// amber "padding" style instead of the neutral one, so the distinction
 // visible via the card's warning icon carries through to this row too.
 function formatAlsoKnownAs(aka, primaryAddress) {
   if (!aka || aka.length === 0) return '';
-  const primaryIP = primaryAddress ? ipOf(primaryAddress) : null;
+  let paddingIPs = null;
+  if (primaryAddress) {
+    paddingIPs = new Set(portPaddingIPClusters({ address: primaryAddress, also_known_as: aka }).map(c => c.ip));
+  }
   return aka.map(e => {
     const name = e.hostname ? parseNameColors(e.hostname) : '';
-    const isPadding = primaryIP !== null && ipOf(e.address) === primaryIP;
+    const isPadding = paddingIPs !== null && paddingIPs.has(ipOf(e.address));
     const cls = 'source-badge' + (isPadding ? ' source-badge-padding' : '');
     return `<span class="${cls}">${e.address}${name ? ` <span class="text-light-emphasis">(${name})</span>` : ''}</span>`;
   }).join('');

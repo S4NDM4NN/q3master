@@ -757,8 +757,6 @@
     refreshMasterStatus();
     setInterval(refreshNetworkHistory, 60000);
     refreshNetworkHistory();
-    setInterval(refreshIPPaddingTotals, 30000);
-    refreshIPPaddingTotals();
     setInterval(refreshMasterUptimeBars, 60000);
     refreshMasterUptimeBars();
     $(window).on('resize', debounce(refreshMasterUptimeBars, 300));
