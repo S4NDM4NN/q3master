@@ -395,6 +395,50 @@ function formatSources(sources) {
   }).join('');
 }
 
+// Strips the ":port" off an "ip:port" address -- mirrors the Go-side ipOf
+// (internal/servers/util.go), used the same way here: port-independent
+// same-host comparisons for port-padding classification.
+function ipOf(addr) {
+  const i = (addr || '').lastIndexOf(':');
+  return i === -1 ? (addr || '') : addr.slice(0, i);
+}
+
+// Groups server.address + server.also_known_as by IP, returning only the
+// IPs with 2+ addresses from this one clone group -- i.e. this specific
+// detected "cloned server"'s own port-padding footprint, computed the same
+// way GetPortPaddingGroups (clones.go) computes it server-side: every
+// address in the group checked against every other, not just aliases
+// against the primary (a group's aliases can cluster heavily on some OTHER
+// IP than the primary's own -- see clones.go's PortPaddingView doc comment).
+// Returns [{ip, addrs: [address, ...]}], biggest cluster first.
+function portPaddingIPClusters(server) {
+  const all = [server.address].concat((server.also_known_as || []).map(e => e.address));
+  const byIP = new Map();
+  all.forEach(addr => {
+    const ip = ipOf(addr);
+    if (!byIP.has(ip)) byIP.set(ip, []);
+    byIP.get(ip).push(addr);
+  });
+  return [...byIP.entries()]
+    .filter(([, addrs]) => addrs.length >= 2)
+    .map(([ip, addrs]) => ({ ip, addrs }))
+    .sort((a, b) => b.addrs.length - a.addrs.length);
+}
+
+// Warning-icon badge for a server with at least one same-clone-group IP
+// cluster (see portPaddingIPClusters) -- '' if there are none. Links to the
+// port-padding dashboard; the native title= tooltip (this project doesn't
+// initialize Bootstrap's JS tooltip component anywhere, so plain title= is
+// the established pattern) names every clustered IP and its port count.
+function portPaddingBadge(server) {
+  const clusters = portPaddingIPClusters(server);
+  if (clusters.length === 0) return '';
+  const totalPadded = clusters.reduce((sum, c) => sum + c.addrs.length, 0);
+  const breakdown = clusters.map(c => `${c.ip} (${c.addrs.length})`).join(', ');
+  const title = `Port padding: ${totalPadded} ports across ${clusters.length} IP${clusters.length === 1 ? '' : 's'} detected as this same server (${breakdown}) — collapsed into this one entry.`;
+  return `<a href="port-padding.html" title="${title}"><i class="bi bi-exclamation-triangle-fill padding-icon ms-1"></i></a>`;
+}
+
 // Lists other addresses (see ServerEntry.AlsoKnownAs) detected reporting
 // identical map/player content to this server -- almost certainly the same
 // physical server broadcasting under multiple ports/IPs, sometimes under a
@@ -403,12 +447,21 @@ function formatSources(sources) {
 // when it was folded in (alias addresses aren't polled again afterward), so
 // it's shown alongside the address rather than replacing it. Shown as small
 // pill badges, same visual language as formatSources, so it reads as
-// "here's the honest picture" rather than a callout.
-function formatAlsoKnownAs(aka) {
+// "here's the honest picture" rather than a callout. When primaryAddress is
+// given, aliases in a padding IP cluster (see portPaddingIPClusters) get the
+// amber "padding" style instead of the neutral one, so the distinction
+// visible via the card's warning icon carries through to this row too.
+function formatAlsoKnownAs(aka, primaryAddress) {
   if (!aka || aka.length === 0) return '';
+  let paddingIPs = null;
+  if (primaryAddress) {
+    paddingIPs = new Set(portPaddingIPClusters({ address: primaryAddress, also_known_as: aka }).map(c => c.ip));
+  }
   return aka.map(e => {
     const name = e.hostname ? parseNameColors(e.hostname) : '';
-    return `<span class="source-badge">${e.address}${name ? ` <span class="text-light-emphasis">(${name})</span>` : ''}</span>`;
+    const isPadding = paddingIPs !== null && paddingIPs.has(ipOf(e.address));
+    const cls = 'source-badge' + (isPadding ? ' source-badge-padding' : '');
+    return `<span class="${cls}">${e.address}${name ? ` <span class="text-light-emphasis">(${name})</span>` : ''}</span>`;
   }).join('');
 }
 

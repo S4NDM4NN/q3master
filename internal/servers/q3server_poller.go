@@ -161,48 +161,49 @@ func offlineRetryBackoff(missedPolls int) time.Duration {
 	return delay
 }
 
-func pollServer(s *ServerEntry) {
-	serverMutex.Lock()
-	s.Polls++
-	s.LastAttempt = time.Now()
-	serverMutex.Unlock()
-
-	addr, err := net.ResolveUDPAddr("udp", s.Address)
+// queryGetStatus sends a getstatus request directly to address and parses
+// the response into a bare ServerEntry-shaped snapshot (Hostname/Map/.../
+// Players/Bots/PlayerCount/BotCount/MatchTimeSec/HasMatchTime, LastSeen set
+// to now), without touching serverList. Used by pollServer below (which
+// then copies the result onto the tracked entry) and by the clone-alias
+// recheck path (clone_recheck.go), which needs to query an address that was
+// deliberately removed from serverList once folded in as an alias --
+// ordinary polling never sees it again, so it has no ServerEntry of its own
+// to poll through. Applies the same per-IP pacing (waitForIPSlot) as
+// ordinary polling either way, so recheck traffic looks the same to a
+// remote host as any other poll.
+func queryGetStatus(address string) (*ServerEntry, bool) {
+	addr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
-		return
+		return nil, false
 	}
 
 	waitForIPSlot(addr.IP.String())
 
 	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
-		retryIfProvisional(s, markOffline(s))
-		return
+		return nil, false
 	}
 	defer conn.Close()
 
 	conn.SetDeadline(time.Now().Add(3 * time.Second))
-	_, err = conn.Write([]byte("\xff\xff\xff\xffgetstatus\n"))
-	if err != nil {
-		retryIfProvisional(s, markOffline(s))
-		return
+	if _, err := conn.Write([]byte("\xff\xff\xff\xffgetstatus\n")); err != nil {
+		return nil, false
 	}
 
 	buffer := make([]byte, 4096)
 	n, err := conn.Read(buffer)
 	if err != nil || n == 0 {
-		retryIfProvisional(s, markOffline(s))
-		return
+		return nil, false
 	}
 
 	lines := strings.Split(string(buffer[:n]), "\n")
 	if len(lines) < 2 {
-		retryIfProvisional(s, markOffline(s))
-		return
+		return nil, false
 	}
 
 	keyValues := strings.Split(strings.TrimPrefix(lines[1], "\\"), "\\")
-	newStatus := &ServerEntry{
+	status := &ServerEntry{
 		LastSeen: time.Now(),
 	}
 
@@ -210,32 +211,32 @@ func pollServer(s *ServerEntry) {
 		k, v := keyValues[i], keyValues[i+1]
 		switch k {
 		case "sv_hostname":
-			newStatus.Hostname = v
+			status.Hostname = v
 		case "mapname":
-			newStatus.Map = v
+			status.Map = v
 		case "gamename":
-			newStatus.Mod = v
+			status.Mod = v
 		case "g_gametype":
-			newStatus.GameType = v
+			status.GameType = v
 		case "version":
-			newStatus.Version = v
+			status.Version = v
 		case "sv_punkbuster":
-			newStatus.PB = v
+			status.PB = v
 		case "sv_maxclients":
-			newStatus.MaxPlayers = parseInt(v)
+			status.MaxPlayers = parseInt(v)
 		case "protocol":
 			// capture protocol if server reports it
-			newStatus.Protocol = parseInt(v)
+			status.Protocol = parseInt(v)
 		case "Score_Time":
 			if secs, ok := parseMatchTime(v); ok {
-				newStatus.MatchTimeSec = secs
-				newStatus.HasMatchTime = true
+				status.MatchTimeSec = secs
+				status.HasMatchTime = true
 			}
 		}
 	}
 
-	newStatus.Players = []string{}
-	newStatus.Bots = []string{}
+	status.Players = []string{}
+	status.Bots = []string{}
 
 	for _, line := range lines[2:] {
 		if strings.TrimSpace(line) == "" {
@@ -252,13 +253,28 @@ func pollServer(s *ServerEntry) {
 		}
 
 		if ping == "0" {
-			newStatus.Bots = append(newStatus.Bots, name)
+			status.Bots = append(status.Bots, name)
 		} else {
-			newStatus.Players = append(newStatus.Players, name)
+			status.Players = append(status.Players, name)
 		}
 	}
-	newStatus.PlayerCount = len(newStatus.Players)
-	newStatus.BotCount = len(newStatus.Bots)
+	status.PlayerCount = len(status.Players)
+	status.BotCount = len(status.Bots)
+
+	return status, true
+}
+
+func pollServer(s *ServerEntry) {
+	serverMutex.Lock()
+	s.Polls++
+	s.LastAttempt = time.Now()
+	serverMutex.Unlock()
+
+	newStatus, ok := queryGetStatus(s.Address)
+	if !ok {
+		retryIfProvisional(s, markOffline(s))
+		return
+	}
 
 	suspectedBots := updatePlayerSessions(s.Address, newStatus.Players)
 

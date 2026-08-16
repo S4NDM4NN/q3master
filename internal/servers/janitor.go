@@ -8,6 +8,7 @@ func StartJanitor() {
     go func() {
         for range ticker.C {
             now := time.Now()
+            var evicted []string
 
             serverMutex.Lock()
             for addr, s := range serverList {
@@ -19,11 +20,13 @@ func StartJanitor() {
                     // New servers fall off after 10 missed polls
                     if s.MissedPolls >= 10 {
                         delete(serverList, addr)
+                        evicted = append(evicted, addr)
                     }
                 case StateOffline:
                     // Offline servers fall off after 7 days since last good poll
                     if !s.LastGoodPoll.IsZero() && now.Sub(s.LastGoodPoll) >= 7*24*time.Hour {
                         delete(serverList, addr)
+                        evicted = append(evicted, addr)
                     }
                 case StateOnline:
                     // no eviction; they remain as long as they keep polling
@@ -34,6 +37,13 @@ func StartJanitor() {
                 }
             }
             serverMutex.Unlock()
+
+            // releaseOrphanedGroups needs cloneMutex, then (if it finds
+            // anything to restore) serverMutex again -- called after fully
+            // releasing serverMutex above, never nested inside it, to keep
+            // the established lock order (cloneMutex before serverMutex,
+            // see applyCloneGroups/GetPortPaddingGroups) intact.
+            releaseOrphanedGroups(evicted)
         }
     }()
 }

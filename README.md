@@ -24,7 +24,8 @@ Quake 3 Arena and OpenArena servers should add this project's own master alongsi
 * **Multi-Master Discovery** – Queries the official id Software master alongside several community masters (`master.iortcw.org`, `etmaster.net`, `dpmaster.deathmask.net`, `master.ioquake3.org`, `master.maverickservers.com`, `master0.excessiveplus.net`) every 5 minutes, so an outage on any single master doesn't blank the list. Each server's "Learned via" shows every master (and/or direct heartbeat) that reported it.
 * **Built-in Master UDP** – Serves Quake 3 `getservers` requests and accepts `heartbeat`/`shutdown` messages on UDP port 27950.
 * **Direct Heartbeat Integration** – Combines discovery results with servers sending direct heartbeats straight to this project's own master, so listings stay resilient even if every upstream master is down.
-* **Clone/Duplicate Collapsing** – Automatically detects a server broadcasting itself across many ports (or even several IPs) to inflate its apparent presence on the list, and collapses those into a single entry with an honest "also broadcasting as" note — rather than either counting it N times or silently hiding it. Detection layers by how much signal is available: real-player roster match (works even if the operator varies the hostname), bot-only roster + hostname match, and — for empty servers — a Quake 3 Arena–specific match-time-clock consistency check.
+* **Clone/Duplicate Collapsing** – Automatically detects a server broadcasting itself across many ports (or even several IPs) to inflate its apparent presence on the list, and collapses those into a single entry with an honest "also broadcasting as" note — rather than either counting it N times or silently hiding it. Detection layers by how much signal is available: real-player roster match (works even if the operator varies the hostname), bot-only roster + hostname match, and — for empty servers — a Quake 3 Arena–specific match-time-clock consistency check. A mirror across genuinely different IPs is treated as tolerated; a clone group whose extra addresses share the primary's own IP is **port padding** — flagged with a warning icon on its card and listed on the `port-padding.html` dashboard (still shown once and still served, just called out).
+* **Self-Correcting Pairings** – Every detected duplicate is periodically re-verified with a fresh direct check of its own — starting at 15 minutes for a brand-new pairing and backing off toward once a day as it keeps holding up on repeated checks (a manual "recheck now" button on the padding dashboard can also force this immediately, restricted to already-detected groups). A pairing that no longer matches (an operator's IP now hosts something else, or a rare false match) is automatically unpaired and returned to the list as its own independent entry instead of staying wrong forever. The same applies if a group's primary itself disappears (evicted after being offline too long): its aliases are released back to normal circulation rather than being stranded forever, both as it happens and retroactively at startup for anything already orphaned.
 * **Suspected-Bot Flagging** – Some servers spoof bots as real players (nonzero ping) to inflate the apparent player count. Names that stay connected continuously, without ever leaving the roster, past a generous threshold get flagged as suspected bots in the player list.
 * **Player/Network History** – Optional MongoDB-backed history (see Configuration below): per-server player-count charts, network-wide total-players/online-servers charts (correctable for known clone groups after the fact, without ever rewriting stored history), and a rolling uptime bar for the official master.
 * **Manual + Automatic Abuse Handling** – A small curated block-list for hosts doing something worse than ordinary list-padding, visible at `/ignored.html`.
@@ -131,6 +132,14 @@ Daily uptime percentage for a given master, for status-page uptime bars (require
 
 The curated block-list of hosts excluded from the listing entirely (see Manual + Automatic Abuse Handling).
 
+### `GET /api/port-padding`
+
+Every detected clone group (see Clone/Duplicate Collapsing above) with at least one IP holding 2+ of its own addresses — one row per detected clone, matching its one card on the main list, broken down by every IP its own membership (primary and aliases alike) actually clusters on rather than just whichever address was chosen as the group's primary. Each alias also reports its ongoing re-verification status (see Self-Correcting Pairings above): `first_paired`, `last_checked`, `check_count`.
+
+### `POST /api/port-padding/recheck?primary=<ip:port>`
+
+Immediately re-verifies every alias in one detected clone group, restricted to `primary` addresses that are already a known padding group (never an arbitrary address) and rate-limited to once every 2 minutes per group. Runs in the background; responds right away with how many addresses were queued.
+
 ---
 
 ## Master UDP
@@ -153,6 +162,7 @@ The frontend is served at `/`. It includes:
 * Click-to-copy IP
 * 🟢/🔴 status indicators, with a broadcast icon and richer hover tooltips for servers sending direct heartbeats
 * `masters.html` — status/uptime for every known master server
+* `port-padding.html` — dashboard of detected same-IP port-padding groups, named for transparency
 * `add-master.html` — per-game `sv_masterN` setup instructions for server owners
 * `fix-ingame-browser.html` — hosts-file fix for players whose in-game browser is empty
 * `ignored.html` — the curated block-list, named for transparency
@@ -190,6 +200,7 @@ q3master/
 │   ├── index.html                  # Main server list
 │   ├── server.html                 # Per-server detail page
 │   ├── masters.html                 # Master server status/uptime
+│   ├── port-padding.html            # Same-IP port-padding dashboard
 │   ├── add-master.html              # Server-owner setup instructions
 │   ├── fix-ingame-browser.html      # Player-facing hosts-file fix
 │   ├── ignored.html                 # Curated block-list

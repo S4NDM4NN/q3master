@@ -2,7 +2,6 @@ package servers
 
 import (
     "sort"
-    "strings"
     "sync"
     "time"
 )
@@ -184,10 +183,7 @@ func ignoredReasonForIP(ip string) (string, bool) {
 // checkIgnored splits addr ("ip:port") and reports whether its IP is
 // blocked, recording a sighting (for the ignored-hosts page) if so.
 func checkIgnored(addr string) bool {
-    ip := addr
-    if idx := strings.LastIndex(addr, ":"); idx != -1 {
-        ip = addr[:idx]
-    }
+    ip := ipOf(addr)
     if _, blocked := ignoredReasonForIP(ip); blocked {
         ignoredSightingsMutex.Lock()
         ignoredSightings[addr] = time.Now()
@@ -222,11 +218,7 @@ func GetIgnoredHosts() []IgnoredHostView {
     for _, h := range ignoredHosts {
         view := IgnoredHostView{IP: h.IP, Reason: h.Reason, Addresses: []IgnoredSighting{}}
         for addr, ts := range ignoredSightings {
-            ip := addr
-            if idx := strings.LastIndex(addr, ":"); idx != -1 {
-                ip = addr[:idx]
-            }
-            if ip == h.IP {
+            if ipOf(addr) == h.IP {
                 view.Addresses = append(view.Addresses, IgnoredSighting{Address: addr, LastSeen: ts})
             }
         }
