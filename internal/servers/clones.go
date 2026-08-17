@@ -127,6 +127,16 @@ const matchTimeTolerance = 8 * time.Second
 // genuine members, joined solely because both had a lone "UnnamedPlayer".
 // A single matching name (chosen or not) is nowhere near "astronomically
 // unlikely" the way a whole populated roster matching is.
+//
+// Below-floor rosters aren't dropped outright, though (see detectClones'
+// tier 1 loop) -- a low-population mode like duel/instaduel legitimately
+// only ever has 1-2 real players, and no other tier can catch it (tier 2/3
+// both require zero real players). Those are still matched, just gated by
+// an exact roster AND matching hostname instead of the roster alone --
+// stacking the same second signal tier 2 uses to compensate for a weak bot
+// roster. Found 2026-08-17: four "*A51* Duel" addresses on
+// 192.227.207.135, one real player apiece, all reporting the identical
+// distinctive nickname and hostname, never merged because 1 < this floor.
 const (
     realRosterMinSize  = 6
     realRosterMaxDrift = 4
@@ -237,9 +247,28 @@ func detectClones() {
             for b := a + 1; b < len(idxs); b++ {
                 i, j := idxs[a], idxs[b]
                 diff := rosterSymmetricDiff(realEntries[i].roster, realEntries[j].roster)
-                if diff <= realRosterMaxDrift &&
-                    len(realEntries[i].roster) >= realRosterMinSize &&
-                    len(realEntries[j].roster) >= realRosterMinSize {
+                belowFloor := len(realEntries[i].roster) < realRosterMinSize ||
+                    len(realEntries[j].roster) < realRosterMinSize
+                switch {
+                case belowFloor:
+                    // Too few real players for the roster alone to be
+                    // trustworthy (the coincidence realRosterMinSize guards
+                    // against -- see its doc comment). But a low-population
+                    // mode like duel/instaduel legitimately has only 1-2
+                    // real players and would otherwise never be caught by
+                    // any tier (tier 2/3 both require zero real players).
+                    // Stack a second signal instead of dropping this case
+                    // entirely: require a byte-exact roster AND matching
+                    // hostname text, the same way tier 2 compensates for a
+                    // weak (small, default-pool) bot roster. Found
+                    // 2026-08-17: four "*A51* Duel" addresses on
+                    // 192.227.207.135, one real player each, all reporting
+                    // the identical distinctive nickname and hostname --
+                    // never merged because 1 < realRosterMinSize.
+                    if diff == 0 && hostnameOf[realEntries[i].addr] == hostnameOf[realEntries[j].addr] {
+                        uf.union(i, j)
+                    }
+                case diff <= realRosterMaxDrift:
                     uf.union(i, j)
                 }
             }
