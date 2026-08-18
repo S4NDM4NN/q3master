@@ -33,7 +33,8 @@
 </head>
 <body>
   <div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <a href="index.html" class="back-link"><i class="bi bi-arrow-left"></i> Back to server list</a>
+    <a href="index.html" class="back-link"><i class="bi bi-arrow-left"></i> RTCW / ET list</a>
+    <a href="quake3.html" class="back-link">Quake 3 / OpenArena list</a>
     <a href="add-master.html" class="back-link">Add these masters to your own server &rarr;</a>
   </div>
 
@@ -47,6 +48,25 @@
   </p>
 
   <div id="masters-container"></div>
+
+  <h2 class="mb-2 mt-4 fs-4">Poll Health</h2>
+  <p class="server-status mb-3">
+    How far behind our own poll-worker pool is on repolling currently-online servers, by protocol.
+    A rising "overdue" count (or a max gap creeping toward 5 minutes) means worker/per-IP-pacing
+    throughput is falling behind &mdash; the same failure mode that once flipped busy servers offline
+    purely from being starved of a repoll, not from actually going down.
+  </p>
+  <div class="card">
+    <div class="card-body">
+      <table class="table table-dark table-sm mb-0" id="poll-health-table">
+        <thead>
+          <tr><th>Game</th><th>Protocol</th><th class="text-end">Online</th><th class="text-end">Overdue</th><th class="text-end">Max gap</th></tr>
+        </thead>
+        <tbody id="poll-health-body"></tbody>
+      </table>
+      <div class="server-status mt-2" id="poll-health-summary"></div>
+    </div>
+  </div>
 
   <script>
     function hostToId(host){
@@ -107,9 +127,45 @@
       $.getJSON('/api/master-status/all', renderMasters);
     }
 
+    function protocolGameLabel(proto){
+      const info = PROTOCOL_INFO[proto];
+      return info ? GAME_LABELS[info.game] : 'Unknown';
+    }
+
+    function formatGap(seconds){
+      if (seconds < 60) return seconds + 's';
+      return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+    }
+
+    function renderPollHealth(health){
+      const $body = $('#poll-health-body').empty();
+      (health.by_protocol || []).forEach(p => {
+        const warn = p.overdue > 0;
+        $body.append(`
+          <tr>
+            <td>${protocolGameLabel(p.protocol)}</td>
+            <td>${p.protocol}</td>
+            <td class="text-end">${p.online}</td>
+            <td class="text-end" style="color:${warn ? '#f0ad4e' : 'inherit'}">${p.overdue}</td>
+            <td class="text-end" style="color:${p.max_gap_seconds > 240 ? '#f44336' : 'inherit'}">${formatGap(p.max_gap_seconds)}</td>
+          </tr>
+        `);
+      });
+      $('#poll-health-summary').text(
+        `${health.total_overdue} of ${health.total_online} online servers overdue for repoll ` +
+        `(> ${formatGap(health.overdue_threshold_seconds)} since last attempt) as of ${new Date(health.generated_at).toLocaleTimeString()}`
+      );
+    }
+
+    function refreshPollHealth(){
+      $.getJSON('/api/poll-health', renderPollHealth);
+    }
+
     refreshMasters();
     setInterval(refreshMasters, 60000);
     $(window).on('resize', debounce(refreshMasters, 300));
+    refreshPollHealth();
+    setInterval(refreshPollHealth, 30000);
   </script>
 </body>
 </html>

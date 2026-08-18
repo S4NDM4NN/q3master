@@ -116,6 +116,10 @@ Returns a single server's full detail object (same shape as above), or 404.
 
 Live up/down status for the official id Software master, or every known master respectively.
 
+### `GET /api/poll-health`
+
+How far behind the poll-worker pool is on repolling currently-online servers, broken down by protocol: online/overdue counts and max gap since last poll attempt, against a 3-minute overdue threshold (comfortably under the 5-minute online→offline cutoff). An early-warning gauge for the worker-starvation failure mode described in `main.go`'s poll-worker-count comment — surfaced on `masters.html`.
+
 ### `GET /api/history?address=ip:port&range=7d|30d|all`
 
 Per-server player-count history (requires `MONGO_URI`).
