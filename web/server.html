@@ -43,7 +43,7 @@
 </head>
 <body>
   <div class="mb-3">
-    <a href="index.html" class="back-link"><i class="bi bi-arrow-left"></i> Back to server list</a>
+    <a href="index.html" class="back-link" id="back-link"><i class="bi bi-arrow-left"></i> Back to server list</a>
   </div>
 
   <div id="not-found" class="alert alert-warning">
@@ -138,6 +138,14 @@
 
     function renderServer(server){
       document.title = (server.hostname || server.address) + ' — RTCW / ET / Q3 Server List';
+
+      // This site splits into two lists (see index.html/quake3.html) --
+      // point "back" at whichever one actually lists this server's game,
+      // rather than always assuming RTCW/ET.
+      const gameKey = getGameKey(server);
+      if (gameKey === 'q3a' || gameKey === 'oa') {
+        $('#back-link').attr('href', 'quake3.html').html('<i class="bi bi-arrow-left"></i> Back to Quake 3 / OpenArena list');
+      }
 
       $('#d-game').text(getGameLabel(server));
       $('#d-protocol-version').text(getVersionLabel(server));

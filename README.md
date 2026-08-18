@@ -2,7 +2,7 @@
 
 A standalone Go-based real-time server browser for id Tech 3 (Quake III engine) games. This tool discovers, polls, and displays active game servers for **Return to Castle Wolfenstein (RTCW)**, **Wolfenstein: Enemy Territory (ET)**, **Quake 3 Arena**, and **OpenArena** via a Bootstrap-powered frontend.
 
-Live Server Viewer: [list.s4ndmod.com](https://list.s4ndmod.com)
+Live Server Viewer: [list.s4ndmod.com](https://list.s4ndmod.com) — this project's primary focus is RTCW/ET, so the main list is scoped to those; Quake 3 Arena/OpenArena get their own list at [list.s4ndmod.com/quake3.html](https://list.s4ndmod.com/quake3.html).
 
 ---
 
@@ -156,19 +156,22 @@ Immediately re-verifies every alias in one detected clone group, restricted to `
 
 ## Web Viewer
 
-The frontend is served at `/`. It includes:
+The frontend is served at `/`. `index.html` (this project's primary focus) covers RTCW/ET; `quake3.html` is the separate Quake 3 Arena/OpenArena list, cross-linked with it. Both include:
 
 * Auto-refresh every 10 seconds, with a sort order that stays stable across refreshes
-* A shareable-by-URL filter bar: game (single-select), and version/mod (multi-select, with in-dropdown search and select-all/deselect-all)
+* A shareable-by-URL filter bar: game (single-select, scoped to that page's games), and version/mod (multi-select, with in-dropdown search and select-all/deselect-all)
 * Q3-colorized player and bot lists, with suspected-bot flagging
 * Per-server detail pages (`server.html`) with a 7-day player-count chart
-* Network-wide player/server-count charts and an official-master uptime bar on the main page
+* Network-wide player/server-count charts, scoped to whichever page's games — and a master-uptime bar (the official master on `index.html`, `master.ioquake3.org` on `quake3.html`)
 * Click-to-copy IP
 * 🟢/🔴 status indicators, with a broadcast icon and richer hover tooltips for servers sending direct heartbeats
-* `masters.html` — status/uptime for every known master server
+
+Shared across both lists:
+
+* `masters.html` — status/uptime for every known master server, plus a poll-health gauge (how far behind the poll-worker pool is on repolling online servers, by protocol — an early warning for the worker-starvation failure mode described in `main.go`'s poll-worker-count comment)
 * `port-padding.html` — dashboard of detected same-IP port-padding groups, named for transparency
 * `add-master.html` — per-game `sv_masterN` setup instructions for server owners
-* `fix-ingame-browser.html` — hosts-file fix for players whose in-game browser is empty
+* `fix-ingame-browser.html` — hosts-file fix for players whose in-game browser is empty (RTCW/ET-specific)
 * `ignored.html` — the curated block-list, named for transparency
 * `contact.html` — email, GitHub, Discord, and Facebook links
 
@@ -201,7 +204,8 @@ q3master/
 │       ├── handlers.go
 │       └── middleware.go
 ├── web/                            # Static frontend (Bootstrap 5, jQuery, no build step)
-│   ├── index.html                  # Main server list
+│   ├── index.html                  # Main server list (RTCW/ET -- this project's primary focus)
+│   ├── quake3.html                  # Quake 3 Arena/OpenArena's own list
 │   ├── server.html                 # Per-server detail page
 │   ├── masters.html                 # Master server status/uptime
 │   ├── port-padding.html            # Same-IP port-padding dashboard

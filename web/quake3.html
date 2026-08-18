@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>RTCW / ET Server List</title>
+  <title>Quake 3 Arena / OpenArena Server List</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
@@ -110,23 +110,22 @@
 </head>
 <body>
   <h1 class="mb-1">
-    RTCW / ET Server List
+    Quake 3 Arena / OpenArena Server List
   </h1>
   <p class="server-status mb-3">
-    Looking for Quake 3 Arena / OpenArena? See <a href="quake3.html" class="back-link">their own list</a>.
+    Looking for RTCW / Enemy Territory? See <a href="index.html" class="back-link">the main list</a> --
+    this site's primary focus, this page just covers the Quake 3 Arena/OpenArena side separately.
   </p>
 
   <div class="mb-3 server-status d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
-      <a href="quake3.html" class="back-link">Quake 3 / OpenArena</a>
+      <a href="index.html" class="back-link">RTCW / ET</a>
       &middot;
       <a href="masters.html" class="back-link">Master Servers</a>
       &middot;
       <a href="port-padding.html" class="back-link">Port Padding</a>
       &middot;
       <a href="add-master.html" class="back-link">Add your server</a>
-      &middot;
-      <a href="fix-ingame-browser.html" class="back-link">Fix in-game browser</a>
       &middot;
       <a href="contact.html" class="back-link">Contact</a>
     </div>
@@ -137,14 +136,14 @@
     </div>
   </div>
 
-  <div class="mb-3" id="master-status">
-    <span class="status-dot offline-dot" id="master-status-dot"></span>
-    <span id="master-status-label" class="server-status">Official master: checking...</span>
+  <div class="mb-3 server-status" id="q3-master-status">
+    <span class="filter-label d-block mb-1">Masters</span>
+    <div class="d-flex flex-wrap gap-3" id="q3-master-badges"></div>
   </div>
 
   <div class="mb-3" id="master-uptime">
     <div class="d-flex justify-content-between align-items-baseline">
-      <span class="chart-label mb-0">Official master uptime</span>
+      <span class="chart-label mb-0">master.ioquake3.org uptime (largest single source)</span>
       <span class="chart-label mb-0" id="master-uptime-summary"></span>
     </div>
     <div class="uptime-bars" id="master-uptime-bars"></div>
@@ -155,9 +154,7 @@
   </div>
 
   <div class="mb-3 server-status">
-    Running a server? <a href="add-master.html" class="back-link">Add this master</a> to show up here:
-    <code id="master-cvar">set sv_master5 wolfmaster.s4ndmod.com</code>
-    <i class="bi bi-clipboard clipboard-icon" data-ip="set sv_master5 wolfmaster.s4ndmod.com" title="Copy to clipboard"></i>
+    Running a server? See <a href="add-master.html" class="back-link">the Quake 3 Arena / OpenArena setup</a> to show up here.
   </div>
 
   <div class="card" id="network-overview">
@@ -193,9 +190,8 @@
           <div class="dropdown-menu ms-menu p-2">
             <div class="ss-options">
               <button type="button" class="ss-option" data-value="all">All</button>
-              <button type="button" class="ss-option" data-value="rtcw">RTCW</button>
-              <button type="button" class="ss-option" data-value="et">ET</button>
-              <button type="button" class="ss-option ss-option-warn" data-value="unknown" title="Servers whose protocol we haven't classified into a game yet">Unknown</button>
+              <button type="button" class="ss-option" data-value="q3a">Quake 3 Arena</button>
+              <button type="button" class="ss-option" data-value="oa">OpenArena</button>
             </div>
           </div>
         </div>
@@ -237,8 +233,6 @@
     </div>
   </div>
 
-  
-
   <div id="server-container"></div>
 
   <script>
@@ -264,29 +258,25 @@
       loadServerHistory(address, canvas);
     });
 
-    // This page is scoped to RTCW/ET only (see quake3.html for Quake 3
-    // Arena/OpenArena's own list) -- PAGE_GAMES bounds which games' servers
-    // get fetched/rendered here at all, and PAGE_PROTOCOLS (derived from
-    // GAME_PROTOCOLS, see common.js) is what the "All" game filter sums
-    // over for network history, so it means "all games on this page"
-    // instead of pulling in the whole network's total (which would include
-    // Quake 3 Arena/OpenArena).
-    const PAGE_GAMES = ['rtcw', 'et', 'unknown'];
-    const PAGE_PROTOCOLS = ['rtcw', 'et'].flatMap(g => GAME_PROTOCOLS[g] || []);
+    // This page is scoped to Quake 3 Arena/OpenArena only (see index.html
+    // for RTCW/ET, this site's primary focus) -- PAGE_GAMES bounds which
+    // games' servers get fetched/rendered here at all, and PAGE_PROTOCOLS
+    // (derived from GAME_PROTOCOLS, see common.js) is what the "All" game
+    // filter sums over for network history, so it means "all games on this
+    // page" instead of pulling in the whole network's total (which would
+    // include RTCW/ET).
+    const PAGE_GAMES = ['q3a', 'oa'];
+    const PAGE_PROTOCOLS = ['q3a', 'oa'].flatMap(g => GAME_PROTOCOLS[g] || []);
 
     // Network history is stored per raw protocol number, but the game
-    // filter merges protocols that belong to the same game (e.g. RTCW
-    // 1.0 + 1.4). For a single-protocol game that's just one request; for a
-    // multi-protocol game (or "all", scoped to this page's games), fetch
-    // each constituent protocol's series and sum matching timestamps --
-    // hourly/daily buckets are truncated to fixed UTC boundaries
-    // independent of which protocol they're rolled up from, so same-range
-    // series line up point-for-point without extra alignment logic.
+    // filter merges protocols that belong to the same game. For a
+    // single-protocol game that's just one request; for "all" (scoped to
+    // this page's games), fetch each constituent protocol's series and sum
+    // matching timestamps -- hourly/daily buckets are truncated to fixed
+    // UTC boundaries independent of which protocol they're rolled up from,
+    // so same-range series line up point-for-point without extra alignment
+    // logic.
     function fetchNetworkHistory(game, range, cb){
-      // "unknown" (or any future game key without a protocol mapping) has
-      // no dedicated history bucket on the backend -- it's a diagnostic
-      // catch-all, not a stable game, so show no data rather than silently
-      // falling back to a combined chart.
       const protos = game === 'all' ? PAGE_PROTOCOLS : GAME_PROTOCOLS[game];
       if (!protos || protos.length === 0){
         cb([]);
@@ -326,10 +316,36 @@
       });
     }
 
-    const OFFICIAL_MASTER_HOST = 'wolfmaster.idsoftware.com:27950';
+    // Unlike RTCW/ET's single "official" master (see index.html), Quake 3
+    // Arena/OpenArena discovery has no one dominant default -- these four
+    // community masters (see add-master.html's "Why these four" for Quake
+    // 3) are all worth watching, so status is shown as a small badge per
+    // host instead of one line. master.ioquake3.org gets the dedicated
+    // uptime bar below since it's "by far the largest single source found."
+    const Q3_MASTER_HOSTS = [
+      'master.ioquake3.org:27950',
+      'dpmaster.deathmask.net:27950',
+      'master.maverickservers.com:27950',
+      'master0.excessiveplus.net:27950',
+    ];
+    function refreshQ3MasterStatus(){
+      $.getJSON('/api/master-status/all', function(all){
+        const byHost = {};
+        (all || []).forEach(m => { byHost[m.host] = m; });
+        const $c = $('#q3-master-badges').empty();
+        Q3_MASTER_HOSTS.forEach(host => {
+          const m = byHost[host];
+          const dot = m && m.up ? 'online-dot' : 'offline-dot';
+          const label = m ? m.label : host;
+          $c.append(`<span class="server-status"><span class="status-dot ${dot}"></span>${label}</span>`);
+        });
+      });
+    }
+
+    const IOQUAKE3_MASTER_HOST = 'master.ioquake3.org:27950';
     function refreshMasterUptimeBars(){
       refreshUptimeBar({
-        host: OFFICIAL_MASTER_HOST,
+        host: IOQUAKE3_MASTER_HOST,
         containerId: 'master-uptime-bars',
         summaryId: 'master-uptime-summary',
         rangeStartId: 'master-uptime-range-start',
@@ -440,7 +456,7 @@
 
     // Single-choice dropdown for the game filter -- same visual shell
     // (.ms-toggle/.ms-menu) as createMultiSelect, so all three filters read
-    // as matching widgets, but no search/select-all machinery: with only 6
+    // as matching widgets, but no search/select-all machinery: with only 3
     // static, always-known options and exactly one active at a time, none
     // of that applies. Options are fixed in the HTML (data-value + text),
     // not rebuilt from live data like version/mod.
@@ -475,7 +491,7 @@
     }
 
     const gameFilter = createSingleSelect('game-filter', {
-      all: 'All', rtcw: 'RTCW', et: 'ET', unknown: 'Unknown',
+      all: 'All', q3a: 'Quake 3 Arena', oa: 'OpenArena',
     });
     const versionFilter = createMultiSelect('version-filter', 'All versions');
     const modFilter = createMultiSelect('mod-filter', 'All mods');
@@ -748,21 +764,11 @@
     // search box: debounced re-render
     $('#server-filter').off('input').on('input', refreshDebounced);
 
-    function refreshMasterStatus(){
-      $.getJSON("/api/master-status", function(status){
-        const dot = status.up ? "online-dot" : "offline-dot";
-        $("#master-status-dot").removeClass("online-dot offline-dot").addClass(dot);
-        $("#master-status-label").text(
-          "Official master (wolfmaster.idsoftware.com): " + (status.up ? "reachable" : "unreachable")
-        );
-      });
-    }
-
     applyFiltersFromURL();
     setInterval(refreshServers, 10000);
     refreshServers();
-    setInterval(refreshMasterStatus, 60000);
-    refreshMasterStatus();
+    setInterval(refreshQ3MasterStatus, 60000);
+    refreshQ3MasterStatus();
     setInterval(refreshNetworkHistory, 60000);
     refreshNetworkHistory();
     setInterval(refreshMasterUptimeBars, 60000);
