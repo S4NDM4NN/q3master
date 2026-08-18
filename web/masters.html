@@ -29,6 +29,7 @@
   .uptime-bars-labels { font-size:.7rem;color:#888;margin-top:.25rem; }
   .host-code { font-size:.85rem;color:#f58; }
   .master-label { color:#eee; }
+  .heartbeat-icon { color:#0dcaf0; }
 </style>
 </head>
 <body>
@@ -48,6 +49,22 @@
   </p>
 
   <div id="masters-container"></div>
+
+  <h2 class="mb-2 mt-4 fs-4">Servers per Source</h2>
+  <p class="server-status mb-3">
+    How many currently-tracked servers each source has reported -- a server counts under every source
+    that's reported it (most are found via more than one master), so these don't sum to the total
+    server count. "wolfmaster.s4ndmod.com (direct heartbeat)" is servers heartbeating straight to this
+    project's own master rather than being discovered via any of the masters above.
+  </p>
+  <div class="card">
+    <div class="card-body">
+      <table class="table table-dark table-sm mb-0" id="source-breakdown-table">
+        <thead><tr><th>Source</th><th class="text-end">Known Servers</th></tr></thead>
+        <tbody id="source-breakdown-body"></tbody>
+      </table>
+    </div>
+  </div>
 
   <h2 class="mb-2 mt-4 fs-4">Poll Health</h2>
   <p class="server-status mb-3">
@@ -127,6 +144,23 @@
       $.getJSON('/api/master-status/all', renderMasters);
     }
 
+    function renderSourceBreakdown(rows){
+      const $body = $('#source-breakdown-body').empty();
+      (rows || []).forEach(r => {
+        const isHeartbeat = r.label.includes('direct heartbeat');
+        $body.append(`
+          <tr>
+            <td>${isHeartbeat ? '<i class="bi bi-broadcast heartbeat-icon me-1"></i>' : ''}${r.label}</td>
+            <td class="text-end">${r.known_servers}</td>
+          </tr>
+        `);
+      });
+    }
+
+    function refreshSourceBreakdown(){
+      $.getJSON('/api/master-status/servers', renderSourceBreakdown);
+    }
+
     function protocolGameLabel(proto){
       const info = PROTOCOL_INFO[proto];
       return info ? GAME_LABELS[info.game] : 'Unknown';
@@ -164,6 +198,8 @@
     refreshMasters();
     setInterval(refreshMasters, 60000);
     $(window).on('resize', debounce(refreshMasters, 300));
+    refreshSourceBreakdown();
+    setInterval(refreshSourceBreakdown, 60000);
     refreshPollHealth();
     setInterval(refreshPollHealth, 30000);
   </script>

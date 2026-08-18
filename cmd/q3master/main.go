@@ -79,6 +79,7 @@ func main() {
     http.HandleFunc("/api/master-status", httpapi.WithCORS(httpapi.ServeMasterStatusAPI))
     http.HandleFunc("/api/master-status/all", httpapi.WithCORS(httpapi.ServeAllMasterStatusAPI))
     http.HandleFunc("/api/poll-health", httpapi.WithCORS(httpapi.ServePollHealthAPI))
+    http.HandleFunc("/api/master-status/servers", httpapi.WithCORS(httpapi.ServeMasterServerBreakdownAPI))
     http.HandleFunc("/api/history", httpapi.WithCORS(httpapi.ServeHistoryAPI))
     http.HandleFunc("/api/history/network", httpapi.WithCORS(httpapi.ServeNetworkHistoryAPI))
     http.HandleFunc("/api/history/master/daily", httpapi.WithCORS(httpapi.ServeMasterDailyUptimeAPI))
