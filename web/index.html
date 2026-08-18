@@ -109,17 +109,12 @@
 </style>
 </head>
 <body>
-  <h1 class="mb-1">
+  <h1 class="mb-3">
     RTCW / ET Server List
   </h1>
-  <p class="server-status mb-3">
-    Looking for Quake 3 Arena / OpenArena? See <a href="quake3.html" class="back-link">their own list</a>.
-  </p>
 
   <div class="mb-3 server-status d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
-      <a href="quake3.html" class="back-link">Quake 3 / OpenArena</a>
-      &middot;
       <a href="masters.html" class="back-link">Master Servers</a>
       &middot;
       <a href="port-padding.html" class="back-link">Port Padding</a>
@@ -240,6 +235,10 @@
   
 
   <div id="server-container"></div>
+
+  <footer class="mt-4 mb-2 text-center" style="font-size:.8rem;color:#666;">
+    Also tracking Quake 3 Arena / OpenArena — see <a href="quake3.html" class="back-link">their list</a>.
+  </footer>
 
   <script>
     // Per-server history: fetched lazily on first expand, cached per address.
