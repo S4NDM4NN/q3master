@@ -130,6 +130,27 @@ func ServeMasterDailyUptimeAPI(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(points)
 }
 
+// ServeMasterServerBreakdownAPI responds with how many currently-tracked
+// servers each source (a known master, or the direct-heartbeat
+// pseudo-source) has reported (see servers.GetSourceCounts) -- a server
+// counts under every source that's reported it, so these don't sum to the
+// total server count.
+func ServeMasterServerBreakdownAPI(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(servers.GetSourceCounts())
+}
+
+// ServePollHealthAPI responds with how far behind the poll-worker pool is on
+// repolling currently-online servers, broken down by protocol (see
+// servers.GetPollHealth) -- a proactive gauge for the worker-starvation
+// failure mode described in main.go's poll-worker-count comment, so it can
+// be watched for directly instead of only noticed after the fact via
+// visibly wrong offline counts.
+func ServePollHealthAPI(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(servers.GetPollHealth())
+}
+
 // ServeIgnoredAPI responds with every blocked IP (see servers.ignoredHosts)
 // and the specific addresses observed trying to register under it.
 func ServeIgnoredAPI(w http.ResponseWriter, r *http.Request) {

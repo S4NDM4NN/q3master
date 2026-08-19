@@ -273,6 +273,16 @@ const PROTOCOL_INFO = {
 const GAME_LABELS = { rtcw: 'RTCW', et: 'ET', q3a: 'Quake 3 Arena', oa: 'OpenArena' };
 const GAME_ORDER = ['rtcw', 'et', 'q3a', 'oa'];
 
+// Inverse of PROTOCOL_INFO (game -> its protocol numbers), derived rather
+// than hand-maintained separately so the two can't drift apart. Used by
+// index.html/quake3.html to sum per-protocol network-history series for a
+// game that spans more than one protocol, and to scope each page's fetched
+// data down to its own subset of games (see PAGE_GAMES on each page).
+const GAME_PROTOCOLS = {};
+Object.entries(PROTOCOL_INFO).forEach(([proto, info]) => {
+  (GAME_PROTOCOLS[info.game] || (GAME_PROTOCOLS[info.game] = [])).push(Number(proto));
+});
+
 // Fallback for servers whose protocol number isn't in PROTOCOL_INFO --
 // which turned out to include not just genuinely-new protocols, but also
 // older/nonstandard RTCW-family builds (plain "Wolf 1.41-MP", several
