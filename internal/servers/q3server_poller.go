@@ -1,6 +1,7 @@
 package servers
 
 import (
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -9,13 +10,36 @@ import (
 	"q3master/internal/history"
 )
 
-// --- Poll worker queue with de-duplication ---
-
+// --- Poll worker queues with de-duplication ---
+//
+// Due polls are split into two priority queues so the much larger
+// backoff-driven offline-retry population can never crowd out a
+// latency-sensitive refresh of a server we currently believe is online.
+// Before this split, a burst of offline retries (or just ordinary UDP
+// jitter) could delay an online server's refresh past janitor.go's
+// 5-minute LastSeen cutoff, force-flipping it offline -- which fed straight
+// back into the offline-retry population as another burst, a
+// self-reinforcing decline that raising worker count alone didn't fix.
+// Workers always drain onlinePollQueue first (see nextPoll).
 var (
-	pollQueue   chan string
-	pendingPoll = make(map[string]bool)
+	onlinePollQueue  chan string
+	offlinePollQueue chan string
+	pendingPoll      = make(map[string]bool)
 	// dedicated mutex for poll queue state; do not alias serverMutex
 	pollQueueMutex sync.Mutex
+)
+
+// Queue capacities are sized independently of worker count and of each
+// other: onlinePollQueue only ever needs to hold currently-online servers
+// due for refresh (a few hundred at a time), while offlinePollQueue absorbs
+// the much larger backoff-driven retry population (thousands of
+// long-known-dead addresses). Undersizing either just means EnqueuePoll's
+// non-blocking send drops the entry for this tick -- it's retried on the
+// next pollServers() sweep -- but previously both shared one 1024-slot
+// queue, so a deep offline backlog could starve online enqueues outright.
+const (
+	onlinePollQueueCapacity  = 4096
+	offlinePollQueueCapacity = 16384
 )
 
 // --- Per-IP poll pacing ---
@@ -55,33 +79,86 @@ func waitForIPSlot(host string) {
 	}
 }
 
-// StartPollWorkers spins up N workers to process poll requests.
+// onlinePollTimeout/offlineProbeTimeout bound how long a single getstatus
+// request waits for a reply. Online refreshes get the full budget since
+// these are servers we expect to answer and want a fair chance against
+// ordinary packet loss. Offline probes get a much shorter budget: most fail
+// outright with no reply at all (UDP gives no fast "connection refused" for
+// a silently-dropped or dead host), so a probe that's going to fail doesn't
+// need to hold a worker for as long as one we expect to succeed.
+const (
+	onlinePollTimeout   = 3 * time.Second
+	offlineProbeTimeout = 1200 * time.Millisecond
+)
+
+// StartPollWorkers spins up N workers to process poll requests. Each worker
+// always prefers onlinePollQueue over offlinePollQueue (see nextPoll), so
+// the bulk offline-retry population can never delay a due online refresh.
 func StartPollWorkers(n int) {
 	if n <= 0 {
 		n = 4
 	}
-	pollQueue = make(chan string, 1024)
+	onlinePollQueue = make(chan string, onlinePollQueueCapacity)
+	offlinePollQueue = make(chan string, offlinePollQueueCapacity)
 	for i := 0; i < n; i++ {
 		go func() {
-			for addr := range pollQueue {
-				// clear pending mark
-				pollQueueMutex.Lock()
-				delete(pendingPoll, addr)
-				pollQueueMutex.Unlock()
-
-				serverMutex.Lock()
-				s := serverList[addr]
-				serverMutex.Unlock()
-				if s != nil {
-					pollServer(s)
-				}
+			for {
+				addr, timeout := nextPoll()
+				dispatchPoll(addr, timeout)
 			}
 		}()
 	}
 }
 
-// EnqueuePoll schedules a server for polling if not already pending.
+// nextPoll blocks until a poll is due, always preferring onlinePollQueue:
+// the first select is a non-blocking check so a pending online poll is
+// picked up even if the second select would otherwise pick offlinePollQueue
+// at random between two ready channels.
+func nextPoll() (addr string, timeout time.Duration) {
+	select {
+	case addr := <-onlinePollQueue:
+		return addr, onlinePollTimeout
+	default:
+	}
+	select {
+	case addr := <-onlinePollQueue:
+		return addr, onlinePollTimeout
+	case addr := <-offlinePollQueue:
+		return addr, offlineProbeTimeout
+	}
+}
+
+func dispatchPoll(addr string, timeout time.Duration) {
+	// clear pending mark
+	pollQueueMutex.Lock()
+	delete(pendingPoll, addr)
+	pollQueueMutex.Unlock()
+
+	serverMutex.Lock()
+	s := serverList[addr]
+	serverMutex.Unlock()
+	if s != nil {
+		pollServer(s, timeout)
+	}
+}
+
+// EnqueuePoll schedules addr for a high-priority (online-refresh) poll if
+// not already pending. Used for anything latency-sensitive: brand-new
+// addresses on first contact, provisional-offline retries still in their
+// grace period, and released clone-group aliases. The bulk backoff-driven
+// offline-retry population goes through enqueueOfflinePoll instead, so it
+// can never crowd these out -- see the queue declarations above.
 func EnqueuePoll(addr string) {
+	enqueuePoll(addr, onlinePollQueue)
+}
+
+// enqueueOfflinePoll schedules addr for a low-priority offline-retry poll.
+// Only pollServers' backoff-driven sweep should call this.
+func enqueueOfflinePoll(addr string) {
+	enqueuePoll(addr, offlinePollQueue)
+}
+
+func enqueuePoll(addr string, queue chan string) {
 	pollQueueMutex.Lock()
 	// Only enqueue if not already pending
 	if pendingPoll[addr] {
@@ -90,7 +167,7 @@ func EnqueuePoll(addr string) {
 	}
 	// Try non-blocking enqueue; mark as pending only on success
 	select {
-	case pollQueue <- addr:
+	case queue <- addr:
 		pendingPoll[addr] = true
 	default:
 		// queue full; leave pending=false so future attempts can retry
@@ -111,22 +188,25 @@ func StartPolling(interval time.Duration) {
 func pollServers() {
 	serverMutex.Lock()
 	now := time.Now()
-	var toPoll []*ServerEntry
+	var toPollOnline, toPollOffline []*ServerEntry
 
 	for _, s := range serverList {
 		switch {
 		case !s.Online:
 			if now.Sub(s.LastAttempt) >= offlineRetryBackoff(s.MissedPolls) {
-				toPoll = append(toPoll, s)
+				toPollOffline = append(toPollOffline, s)
 			}
 		case now.Sub(s.LastSeen) > 2*time.Minute:
-			toPoll = append(toPoll, s)
+			toPollOnline = append(toPollOnline, s)
 		}
 	}
 	serverMutex.Unlock()
 
-	for _, s := range toPoll {
+	for _, s := range toPollOnline {
 		EnqueuePoll(s.Address)
+	}
+	for _, s := range toPollOffline {
+		enqueueOfflinePoll(s.Address)
 	}
 }
 
@@ -145,7 +225,13 @@ const (
 )
 
 // offlineRetryBackoff grows from offlineRetryBaseBackoff up to
-// offlineRetryMaxBackoff as consecutive missed polls accumulate.
+// offlineRetryMaxBackoff as consecutive missed polls accumulate, plus up to
+// +/-15% jitter. Without the jitter, a batch of servers that all went
+// offline around the same moment (e.g. a wave of janitor evictions) would
+// all come due for retry in lockstep on every subsequent rung -- exactly
+// the kind of synchronized burst that crowds out concurrently-due online
+// refreshes, even with the two queues split (see the queue declarations
+// above).
 func offlineRetryBackoff(missedPolls int) time.Duration {
 	level := missedPolls - offlineAfterMissedPolls
 	if level < 0 {
@@ -158,7 +244,8 @@ func offlineRetryBackoff(missedPolls int) time.Duration {
 	if delay > offlineRetryMaxBackoff {
 		delay = offlineRetryMaxBackoff
 	}
-	return delay
+	jitterFactor := 0.85 + rand.Float64()*0.3 // [0.85, 1.15)
+	return time.Duration(float64(delay) * jitterFactor)
 }
 
 // queryGetStatus sends a getstatus request directly to address and parses
@@ -171,8 +258,9 @@ func offlineRetryBackoff(missedPolls int) time.Duration {
 // ordinary polling never sees it again, so it has no ServerEntry of its own
 // to poll through. Applies the same per-IP pacing (waitForIPSlot) as
 // ordinary polling either way, so recheck traffic looks the same to a
-// remote host as any other poll.
-func queryGetStatus(address string) (*ServerEntry, bool) {
+// remote host as any other poll. timeout bounds how long this one request
+// waits for a reply -- see onlinePollTimeout/offlineProbeTimeout.
+func queryGetStatus(address string, timeout time.Duration) (*ServerEntry, bool) {
 	addr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
 		return nil, false
@@ -186,7 +274,7 @@ func queryGetStatus(address string) (*ServerEntry, bool) {
 	}
 	defer conn.Close()
 
-	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	conn.SetDeadline(time.Now().Add(timeout))
 	if _, err := conn.Write([]byte("\xff\xff\xff\xffgetstatus\n")); err != nil {
 		return nil, false
 	}
@@ -264,13 +352,13 @@ func queryGetStatus(address string) (*ServerEntry, bool) {
 	return status, true
 }
 
-func pollServer(s *ServerEntry) {
+func pollServer(s *ServerEntry, timeout time.Duration) {
 	serverMutex.Lock()
 	s.Polls++
 	s.LastAttempt = time.Now()
 	serverMutex.Unlock()
 
-	newStatus, ok := queryGetStatus(s.Address)
+	newStatus, ok := queryGetStatus(s.Address, timeout)
 	if !ok {
 		retryIfProvisional(s, markOffline(s))
 		return

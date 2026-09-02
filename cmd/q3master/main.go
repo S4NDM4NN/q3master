@@ -49,6 +49,12 @@ func main() {
 		fmt.Printf("failed to init player-count history: %v\n", err)
 	}
 
+	// 1024 gives ample headroom across today's ~1000 distinct known IPs, but
+	// raw worker count turned out not to be the real lever here: the actual
+	// fix for falling behind was splitting online-refresh and offline-retry
+	// polls into separate priority queues (see q3server_poller.go) so a
+	// burst of offline retries can't delay an online server's refresh past
+	// janitor.go's 5-minute cutoff and force it offline.
 	servers.StartPollWorkers(1024)
 	servers.StartDiscovery(5*time.Minute, history.RecordMasterSample)
 	servers.StartPolling(15 * time.Second)

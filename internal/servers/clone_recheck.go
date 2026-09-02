@@ -135,7 +135,7 @@ func recheckOne(primaryAddr, aliasAddr string) {
         return
     }
 
-    fresh, ok := queryGetStatus(aliasAddr)
+    fresh, ok := queryGetStatus(aliasAddr, onlinePollTimeout)
     if !ok {
         // Alias didn't answer. Not itself evidence of a bad pairing --
         // aliases on a busy padding relay routinely have long dead
