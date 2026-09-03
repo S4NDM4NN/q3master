@@ -51,15 +51,15 @@ func ParseRange(rangeParam string) time.Time {
 }
 
 // GetServerHistory returns player-count history points for a server since
-// the given cutoff, merging raw/hourly/daily tiers depending on how far back
-// the cutoff reaches.
+// the given cutoff, merging hourly/daily tiers depending on how far back the
+// cutoff reaches -- never raw per-minute points, see the note above
+// RawRetention in history.go.
 func GetServerHistory(ctx context.Context, address string, since time.Time) ([]Point, error) {
 	if !enabled {
 		return []Point{}, nil
 	}
 
 	now := time.Now().UTC()
-	rawCutoff := now.Add(-chartRawWindow)
 	hourlyCutoff := now.Add(-HourlyRetention)
 
 	points := []Point{}
@@ -74,30 +74,16 @@ func GetServerHistory(ctx context.Context, address string, since time.Time) ([]P
 		}
 	}
 
-	if since.Before(rawCutoff) {
-		from := hourlyCutoff
-		if since.After(hourlyCutoff) {
-			from = since
-		}
-		docs, err := queryHourly(ctx, address, from, rawCutoff)
-		if err != nil {
-			return nil, err
-		}
-		for _, d := range docs {
-			points = append(points, Point{Ts: d.HourTs, PlayerCount: d.AvgPlayers, MaxPlayers: d.MaxPlayers})
-		}
-	}
-
-	from := rawCutoff
-	if since.After(rawCutoff) {
+	from := hourlyCutoff
+	if since.After(hourlyCutoff) {
 		from = since
 	}
-	rawDocs, err := queryRaw(ctx, address, from, now)
+	docs, err := queryHourly(ctx, address, from, now)
 	if err != nil {
 		return nil, err
 	}
-	for _, d := range rawDocs {
-		points = append(points, Point{Ts: d.Ts, PlayerCount: float64(d.PlayerCount), MaxPlayers: d.MaxPlayers})
+	for _, d := range docs {
+		points = append(points, Point{Ts: d.HourTs, PlayerCount: d.AvgPlayers, MaxPlayers: d.MaxPlayers})
 	}
 
 	sort.Slice(points, func(i, j int) bool { return points[i].Ts.Before(points[j].Ts) })
@@ -122,7 +108,6 @@ func GetNetworkHistory(ctx context.Context, protocol string, since time.Time, al
 	}
 
 	now := time.Now().UTC()
-	rawCutoff := now.Add(-chartRawWindow)
 	hourlyCutoff := now.Add(-HourlyRetention)
 
 	points := []NetworkPoint{}
@@ -137,30 +122,16 @@ func GetNetworkHistory(ctx context.Context, protocol string, since time.Time, al
 		}
 	}
 
-	if since.Before(rawCutoff) {
-		from := hourlyCutoff
-		if since.After(hourlyCutoff) {
-			from = since
-		}
-		docs, err := queryNetworkHourly(ctx, protocol, from, rawCutoff)
-		if err != nil {
-			return nil, err
-		}
-		for _, d := range docs {
-			points = append(points, NetworkPoint{Ts: d.HourTs, TotalPlayers: d.AvgPlayers, OnlineServerCount: d.AvgOnlineServers})
-		}
-	}
-
-	from := rawCutoff
-	if since.After(rawCutoff) {
+	from := hourlyCutoff
+	if since.After(hourlyCutoff) {
 		from = since
 	}
-	rawDocs, err := queryNetworkRaw(ctx, protocol, from, now)
+	docs, err := queryNetworkHourly(ctx, protocol, from, now)
 	if err != nil {
 		return nil, err
 	}
-	for _, d := range rawDocs {
-		points = append(points, NetworkPoint{Ts: d.Ts, TotalPlayers: float64(d.TotalPlayers), OnlineServerCount: float64(d.OnlineServerCount)})
+	for _, d := range docs {
+		points = append(points, NetworkPoint{Ts: d.HourTs, TotalPlayers: d.AvgPlayers, OnlineServerCount: d.AvgOnlineServers})
 	}
 
 	sort.Slice(points, func(i, j int) bool { return points[i].Ts.Before(points[j].Ts) })
@@ -256,22 +227,6 @@ func queryDaily(ctx context.Context, address string, from, to time.Time) ([]dail
 		return nil, err
 	}
 	var docs []dailyDoc
-	if err := cur.All(ctx, &docs); err != nil {
-		return nil, err
-	}
-	return docs, nil
-}
-
-func queryNetworkRaw(ctx context.Context, protocol string, from, to time.Time) ([]networkSampleDoc, error) {
-	filter := bson.D{
-		{Key: "protocol", Value: protocol},
-		{Key: "ts", Value: bson.D{{Key: "$gte", Value: from}, {Key: "$lte", Value: to}}},
-	}
-	cur, err := networkSamplesColl.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "ts", Value: 1}}))
-	if err != nil {
-		return nil, err
-	}
-	var docs []networkSampleDoc
 	if err := cur.All(ctx, &docs); err != nil {
 		return nil, err
 	}
