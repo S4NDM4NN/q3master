@@ -85,22 +85,37 @@ function fitCanvas(canvas) {
 // up as one big gap between two ordinary-looking points -- without this,
 // drawSparkline would connect straight across it and an outage would render
 // as an innocuous flat plateau instead of a visible break. The threshold is
-// derived from the median spacing (not a fixed constant) so it adapts
-// whether points are raw samples (~minutes apart), hourly, or daily rollups.
+// derived from *local* median spacing -- a window of nearby deltas, not one
+// global median across the whole series -- so it adapts within whichever
+// resolution tier a given stretch of points came from (raw samples ~a
+// minute apart, hourly or daily rollups further back; GetNetworkHistory /
+// GetServerHistory serve exactly this kind of tiered mix for any range
+// wider than a few hours). A single global median breaks down the moment a
+// series mixes tiers: a week-long chart's tail (raw, ~60s apart) vastly
+// outnumbers its older hourly-resolution stretch (~3600s apart), so the
+// global median lands in the raw tier and every ordinary hourly gap looks
+// like a multi-hour outage -- fragmenting a perfectly continuous week into
+// a scatter of single-point segments.
 function splitOnGaps(points) {
   if (points.length < 3) return [points];
 
   const deltas = [];
   for (let i = 1; i < points.length; i++) deltas.push(points[i].x - points[i - 1].x);
-  const sorted = [...deltas].sort((a, b) => a - b);
-  const median = sorted[Math.floor(sorted.length / 2)];
   const floorMs = 10 * 60 * 1000;
-  const threshold = Math.max(3 * median, floorMs);
+  const windowRadius = 5;
+
+  const localThreshold = i => {
+    const lo = Math.max(0, i - windowRadius);
+    const hi = Math.min(deltas.length, i + windowRadius + 1);
+    const window = [...deltas.slice(lo, hi)].sort((a, b) => a - b);
+    const median = window[Math.floor(window.length / 2)];
+    return Math.max(3 * median, floorMs);
+  };
 
   const segments = [];
   let current = [points[0]];
   for (let i = 1; i < points.length; i++) {
-    if (points[i].x - points[i - 1].x > threshold) {
+    if (points[i].x - points[i - 1].x > localThreshold(i - 1)) {
       segments.push(current);
       current = [];
     }
