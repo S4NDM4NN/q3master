@@ -18,6 +18,65 @@ func ListServers() []*ServerEntry {
     return list
 }
 
+// ServerSummary is the minimal per-server payload for the server-browser
+// list view (see ServeServersSummaryAPI) -- every field the list needs to
+// render cards, filter, and sort, without the heavier ones (full
+// player/bot rosters, poll-source history, missed-poll count) that are only
+// needed once a specific server's detail view is opened, via GetServer /
+// ServeServerAPI. Those heavier fields are exactly what made the full
+// /api/servers payload multiple megabytes once the tracked list grew past a
+// few thousand entries -- most of it for servers the list is showing
+// collapsed anyway.
+type ServerSummary struct {
+    Address       string      `json:"address"`
+    Hostname      string      `json:"hostname"`
+    Map           string      `json:"map"`
+    Mod           string      `json:"mod"`
+    GameType      string      `json:"gametype"`
+    Version       string      `json:"version"`
+    Protocol      int         `json:"protocol"`
+    PlayerCount   int         `json:"player_count"`
+    MaxPlayers    int         `json:"max_players"`
+    BotCount      int         `json:"bot_count"`
+    Online        bool        `json:"online"`
+    State         ServerState `json:"state"`
+    FirstSeen     time.Time   `json:"first_seen"`
+    LastSeen      time.Time   `json:"last_seen"`
+    LastHeartbeat time.Time   `json:"last_heartbeat"`
+    AlsoKnownAs   []AKAEntry  `json:"also_known_as,omitempty"`
+}
+
+// ListServerSummaries returns a snapshot of every server as a
+// ServerSummary -- see that type for why it's a separate, lighter shape
+// from ListServers.
+func ListServerSummaries() []ServerSummary {
+    serverMutex.Lock()
+    defer serverMutex.Unlock()
+
+    list := make([]ServerSummary, 0, len(serverList))
+    for _, s := range serverList {
+        list = append(list, ServerSummary{
+            Address:       s.Address,
+            Hostname:      s.Hostname,
+            Map:           s.Map,
+            Mod:           s.Mod,
+            GameType:      s.GameType,
+            Version:       s.Version,
+            Protocol:      s.Protocol,
+            PlayerCount:   s.PlayerCount,
+            MaxPlayers:    s.MaxPlayers,
+            BotCount:      s.BotCount,
+            Online:        s.Online,
+            State:         s.State,
+            FirstSeen:     s.FirstSeen,
+            LastSeen:      s.LastSeen,
+            LastHeartbeat: s.LastHeartbeat,
+            AlsoKnownAs:   s.AlsoKnownAs,
+        })
+    }
+    return list
+}
+
 // GetServer returns a snapshot of a single server entry by address, and
 // whether it was found.
 func GetServer(address string) (*ServerEntry, bool) {

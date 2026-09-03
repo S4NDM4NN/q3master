@@ -29,6 +29,29 @@ func ServeServersAPI(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(list)
 }
 
+// ServeServersSummaryAPI responds with the minimal per-server fields the
+// server-browser list view needs (see servers.ServerSummary) -- everything
+// short of the full player/bot rosters and poll-source history, which the
+// list only shows once a specific card's detail view is opened (fetched via
+// ServeServerAPI at that point instead of paying for it on every server up
+// front). Same sort as ServeServersAPI.
+func ServeServersSummaryAPI(w http.ResponseWriter, r *http.Request) {
+    list := servers.ListServerSummaries()
+
+    sort.Slice(list, func(i, j int) bool {
+        if list[i].PlayerCount != list[j].PlayerCount {
+            return list[i].PlayerCount > list[j].PlayerCount
+        }
+        if list[i].Online != list[j].Online {
+            return list[i].Online
+        }
+        return list[i].Address < list[j].Address
+    })
+
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(list)
+}
+
 // ServeServerAPI responds with a single server's details. Query params:
 // address (required, "ip:port"). 404s if the server isn't known.
 func ServeServerAPI(w http.ResponseWriter, r *http.Request) {
