@@ -23,8 +23,8 @@ func StartJanitor() {
                         evicted = append(evicted, addr)
                     }
                 case StateOffline:
-                    // Offline servers fall off after 7 days since last good poll
-                    if !s.LastGoodPoll.IsZero() && now.Sub(s.LastGoodPoll) >= 7*24*time.Hour {
+                    // Offline servers fall off after 24 hours since last good poll
+                    if !s.LastGoodPoll.IsZero() && now.Sub(s.LastGoodPoll) >= 24*time.Hour {
                         delete(serverList, addr)
                         evicted = append(evicted, addr)
                     }
