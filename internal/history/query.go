@@ -59,7 +59,7 @@ func GetServerHistory(ctx context.Context, address string, since time.Time) ([]P
 	}
 
 	now := time.Now().UTC()
-	rawCutoff := now.Add(-RawRetention)
+	rawCutoff := now.Add(-chartRawWindow)
 	hourlyCutoff := now.Add(-HourlyRetention)
 
 	points := []Point{}
@@ -122,7 +122,7 @@ func GetNetworkHistory(ctx context.Context, protocol string, since time.Time, al
 	}
 
 	now := time.Now().UTC()
-	rawCutoff := now.Add(-RawRetention)
+	rawCutoff := now.Add(-chartRawWindow)
 	hourlyCutoff := now.Add(-HourlyRetention)
 
 	points := []NetworkPoint{}

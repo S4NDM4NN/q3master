@@ -26,6 +26,23 @@ const (
 	HourlyRetention = 30 * 24 * time.Hour
 )
 
+// chartRawWindow bounds how much of any requested history range query.go
+// actually serves at full raw (per-minute) resolution -- only the most
+// recent slice, regardless of how far back the request's range reaches.
+// RawRetention above is a *storage* retention window (how long raw samples
+// stay in Mongo, and what correctForAliases uses to know which collection
+// tier a given timestamp's data lives in) -- it is not meant to double as
+// how much raw data a chart needs. The two used to be conflated: the
+// default "7d" range request set its cutoff to exactly now-RawRetention,
+// which query.go's tiering never classified as "before the raw cutoff" (it
+// was *at* the cutoff), so the whole week got served at raw resolution --
+// up to ~10k per-minute points per protocol for the network-wide charts,
+// most of it invisible at chart width. Anything older than this window (up
+// to HourlyRetention) is served from the much smaller hourly rollups
+// instead, which already exist for the same period (see the overlap note
+// above).
+const chartRawWindow = 6 * time.Hour
+
 var (
 	db *mongo.Database
 
