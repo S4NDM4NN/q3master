@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -47,7 +49,7 @@ var (
 	masterHostHourlyColl  *mongo.Collection
 	masterHostDailyColl   *mongo.Collection
 
-	enabled bool
+	enabled atomic.Bool
 
 	sampleCh           chan sampleDoc
 	networkSampleCh    chan networkSampleDoc
@@ -56,7 +58,80 @@ var (
 
 // Enabled reports whether history tracking is active.
 func Enabled() bool {
-	return enabled
+	return enabled.Load()
+}
+
+// Retry backoff for Start: Mongo is routinely a few seconds behind this
+// process after a node restart, so the first attempts are quick, then back
+// off to a steady minute so a long outage doesn't spam the log.
+const (
+	initRetryMin = 5 * time.Second
+	initRetryMax = time.Minute
+)
+
+// Status is a snapshot of history tracking, served so a stuck connection
+// shows up somewhere other than a chart that is silently empty.
+type Status struct {
+	Configured bool   `json:"configured"`
+	Enabled    bool   `json:"enabled"`
+	Attempts   int    `json:"attempts"`
+	LastError  string `json:"last_error,omitempty"`
+}
+
+var (
+	statusMu sync.Mutex
+	status   Status
+)
+
+// GetStatus returns the current history connection status.
+func GetStatus() Status {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	st := status
+	st.Enabled = enabled.Load()
+	return st
+}
+
+// Start connects to MongoDB in the background, retrying until it succeeds,
+// so a database that is not up yet when this process starts does not leave
+// history disabled until the next restart. Returns immediately. If uri is
+// empty, history tracking is left disabled and nothing is retried.
+func Start(uri, dbName string) {
+	if uri == "" {
+		log.Println("history: MONGO_URI not set, player-count history tracking disabled")
+		return
+	}
+	statusMu.Lock()
+	status.Configured = true
+	statusMu.Unlock()
+
+	go retryInit(func() error { return Init(uri, dbName) }, time.Sleep)
+}
+
+// retryInit calls connect until it succeeds, sleeping between attempts with
+// a doubling backoff capped at initRetryMax. sleep is a parameter so tests
+// don't wait in real time.
+func retryInit(connect func() error, sleep func(time.Duration)) {
+	delay := initRetryMin
+	for attempt := 1; ; attempt++ {
+		err := connect()
+		statusMu.Lock()
+		status.Attempts = attempt
+		if err != nil {
+			status.LastError = err.Error()
+		} else {
+			status.LastError = ""
+		}
+		statusMu.Unlock()
+		if err == nil {
+			return
+		}
+		log.Printf("history: init attempt %d failed, retrying in %s: %v", attempt, delay, err)
+		sleep(delay)
+		if delay *= 2; delay > initRetryMax {
+			delay = initRetryMax
+		}
+	}
 }
 
 // Init connects to MongoDB and ensures collections/indexes exist. If uri is
@@ -77,14 +152,20 @@ func Init(uri, dbName string) error {
 	if err != nil {
 		return fmt.Errorf("connect to mongo: %w", err)
 	}
+	// A failed attempt must not leak its client: Start retries Init, and each
+	// client keeps its own monitoring goroutines until disconnected.
+	fail := func(err error) error {
+		_ = client.Disconnect(context.Background())
+		return err
+	}
 	if err := client.Ping(ctx, nil); err != nil {
-		return fmt.Errorf("ping mongo: %w", err)
+		return fail(fmt.Errorf("ping mongo: %w", err))
 	}
 
 	db = client.Database(dbName)
 
 	if err := ensureCollections(ctx); err != nil {
-		return fmt.Errorf("ensure collections: %w", err)
+		return fail(fmt.Errorf("ensure collections: %w", err))
 	}
 
 	samplesColl = db.Collection("samples")
@@ -106,7 +187,7 @@ func Init(uri, dbName string) error {
 	go networkSampleWriter()
 	go masterHostSampleWriter()
 
-	enabled = true
+	enabled.Store(true)
 	log.Println("history: connected to MongoDB, player-count history tracking enabled")
 	return nil
 }
@@ -283,7 +364,7 @@ type masterHostDailyDoc struct {
 // Non-blocking: if history tracking is disabled or the write queue is full,
 // the sample is dropped rather than slowing down polling.
 func RecordSample(address string, playerCount, maxPlayers int, mapName string) {
-	if !enabled {
+	if !enabled.Load() {
 		return
 	}
 	doc := sampleDoc{
@@ -315,7 +396,7 @@ func sampleWriter() {
 // combined fleet, or a Q3 protocol number as a string e.g. "84" for just
 // that protocol), so the overview can later be filtered per-protocol.
 func RecordNetworkSample(protocol string, totalPlayers, onlineServers int) {
-	if !enabled {
+	if !enabled.Load() {
 		return
 	}
 	doc := networkSampleDoc{
@@ -346,7 +427,7 @@ func networkSampleWriter() {
 // blocking: if history tracking is disabled or the write queue is full,
 // the sample is dropped rather than slowing down the discovery poll.
 func RecordMasterSample(host string, up bool) {
-	if !enabled {
+	if !enabled.Load() {
 		return
 	}
 	doc := masterHostSampleDoc{

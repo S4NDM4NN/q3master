@@ -174,6 +174,14 @@ func ServePollHealthAPI(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(servers.GetPollHealth())
 }
 
+// ServeHistoryStatusAPI responds with whether history tracking is connected
+// to MongoDB, so a connection that never came up is visible instead of
+// showing up only as empty charts.
+func ServeHistoryStatusAPI(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    _ = json.NewEncoder(w).Encode(history.GetStatus())
+}
+
 // ServeIgnoredAPI responds with every blocked IP (see servers.ignoredHosts)
 // and the specific addresses observed trying to register under it.
 func ServeIgnoredAPI(w http.ResponseWriter, r *http.Request) {
