@@ -125,8 +125,71 @@ function splitOnGaps(points) {
   return segments;
 }
 
+// "3d ago" / "5h ago" / "12m ago" for a millisecond age.
+function formatAgo(ms) {
+  const m = Math.round(ms / 60000);
+  if (m < 1) return 'now';
+  if (m < 60) return m + 'm ago';
+  const h = Math.round(m / 60);
+  if (h < 48) return h + 'h ago';
+  return Math.round(h / 24) + 'd ago';
+}
+
+// X-axis tick label: clock time for spans under ~2 days (where the date
+// would repeat on every tick), otherwise the date.
+function formatAxisTime(ts, spanMs) {
+  const d = new Date(ts);
+  if (spanMs <= 48 * 3600 * 1000) return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// Draws a sparkline chart and wires up hover/touch readout. Layout, top to
+// bottom: a header strip ("latest" value on the left, "peak" and when it
+// happened on the right), the plot, and a time-axis strip. The latest value
+// is marked by a solid dot on the end of the line, so the number in the
+// header and the dot are visibly the same thing; the peak gets a hollow
+// marker only when it is a different point (otherwise the two would stack).
+// Taller charts (>= 120px, the server detail page) also get y gridlines
+// with labels and several x ticks; compact ones show just the range ends.
+//
+// opts: { color, peakLabel (include peak timestamp even when narrow) }
 function drawSparkline(canvas, points, opts = {}) {
   if (!canvas) return;
+  canvas._spark = { points, opts, hover: -1 };
+
+  if (!canvas._sparkBound) {
+    canvas._sparkBound = true;
+    // pan-y: keep vertical page scroll working when a finger lands on a chart.
+    canvas.style.touchAction = 'pan-y';
+    const onMove = e => {
+      const st = canvas._spark;
+      if (!st || !st.layout || !st.points.length) return;
+      const rect = canvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const { minX, maxX, pad, w } = st.layout;
+      const frac = (px - pad) / (w - 2 * pad);
+      const target = minX + Math.min(1, Math.max(0, frac)) * (maxX - minX);
+      let best = 0, bestD = Infinity;
+      st.points.forEach((p, i) => {
+        const d = Math.abs(p.x - target);
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      if (st.hover !== best) { st.hover = best; renderSparkline(canvas); }
+    };
+    const onLeave = () => {
+      const st = canvas._spark;
+      if (st && st.hover !== -1) { st.hover = -1; renderSparkline(canvas); }
+    };
+    canvas.addEventListener('pointermove', onMove);
+    canvas.addEventListener('pointerdown', onMove);
+    canvas.addEventListener('pointerleave', onLeave);
+    canvas.addEventListener('pointercancel', onLeave);
+  }
+  renderSparkline(canvas);
+}
+
+function renderSparkline(canvas) {
+  const { points, opts, hover } = canvas._spark;
   const { ctx, w, h } = fitCanvas(canvas);
   ctx.clearRect(0, 0, w, h);
 
@@ -137,23 +200,41 @@ function drawSparkline(canvas, points, opts = {}) {
     return;
   }
 
-  // The peak/current-value readouts get their own header strip above the
-  // plot instead of floating on top of it -- text drawn inside the plot
-  // area inevitably collides with the line/fill whenever a value is near
-  // the top of the chart's range, which is often (that's what "peak"
-  // means). Reserving space up front means the chart itself never has
-  // anything drawn under those labels, so there's nothing to collide with.
-  const headerH = 14;
+  const color = opts.color || '#0dcaf0';
+  const tall = h >= 120;
+  const headerH = 14, footerH = 13;
   const xs = points.map(p => p.x), ys = points.map(p => p.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const maxY = Math.max(1, ...ys);
   const pad = 4;
-  const plotTop = headerH + 3;
-  const plotBottom = h - pad;
+  const plotTop = headerH + 5;
+  const plotBottom = h - footerH - 2;
   const xScale = x => pad + (w - 2 * pad) * (maxX === minX ? 0.5 : (x - minX) / (maxX - minX));
   const yScale = y => plotBottom - (plotBottom - plotTop) * (y / maxY);
+  canvas._spark.layout = { minX, maxX, pad, w };
 
-  const color = opts.color || '#0dcaf0';
+  const last = points[points.length - 1];
+  let peak = points[0];
+  for (const p of points) if (p.y > peak.y) peak = p;
+  const showPeakMarker = peak.y > last.y;
+
+  // Gridlines: baseline always (anchors "zero"), plus labeled max/half
+  // lines on tall charts so the y scale can actually be read.
+  ctx.lineWidth = 1;
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'left';
+  const grid = tall ? [0, 0.5, 1] : [0];
+  for (const f of grid) {
+    const y = Math.round(plotBottom - (plotBottom - plotTop) * f) + 0.5;
+    ctx.strokeStyle = f === 0 ? '#444' : '#2c2c2c';
+    ctx.setLineDash(f === 0 ? [] : [3, 3]);
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+    if (tall) {
+      ctx.fillStyle = '#777';
+      ctx.fillText(String(Math.round(maxY * f)), pad + 2, y - 3);
+    }
+  }
+  ctx.setLineDash([]);
 
   for (const segment of splitOnGaps(points)) {
     if (segment.length === 0) continue;
@@ -168,42 +249,82 @@ function drawSparkline(canvas, points, opts = {}) {
     ctx.stroke();
 
     if (segment.length > 1) {
-      const segMaxX = segment[segment.length - 1].x, segMinX = segment[0].x;
-      ctx.lineTo(xScale(segMaxX), plotBottom);
-      ctx.lineTo(xScale(segMinX), plotBottom);
+      ctx.lineTo(xScale(segment[segment.length - 1].x), plotBottom);
+      ctx.lineTo(xScale(segment[0].x), plotBottom);
       ctx.closePath();
       ctx.fillStyle = color + '26';
       ctx.fill();
     }
   }
 
-  // Peak marker: a dot on the highest point.
-  let peak = points[0];
-  for (const p of points) if (p.y > peak.y) peak = p;
-  const px = xScale(peak.x), py = yScale(peak.y);
-  ctx.beginPath();
-  ctx.arc(px, py, 3, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff';
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
-  ctx.fill();
-  ctx.stroke();
+  const dot = (p, filled) => {
+    ctx.beginPath();
+    ctx.arc(xScale(p.x), yScale(p.y), 3, 0, Math.PI * 2);
+    ctx.fillStyle = filled ? color : '#111';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.fill();
+    ctx.stroke();
+  };
+  if (showPeakMarker) dot(peak, false);
+  dot(last, true);
 
-  // Header strip: peak on the left (with timestamp too when opts.peakLabel
-  // is set -- used on the roomier detail-page chart), current value on the
-  // right.
-  const peakText = opts.peakLabel
-    ? `peak ${Math.round(peak.y)} · ${formatLastSeen(peak.x)}`
-    : `peak ${Math.round(peak.y)}`;
-  const last = points[points.length - 1];
+  // Header: latest (matches the solid end dot) on the left, peak (matches
+  // the hollow dot) on the right.
   ctx.font = '11px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = color;
+  const latestText = 'latest ' + Math.round(last.y);
+  ctx.fillText(latestText, pad, 11);
+  const latestW = ctx.measureText(latestText).width;
+
+  const now = Date.now();
+  let peakText = 'peak ' + Math.round(peak.y);
+  const withWhen = peakText + ' · ' + (opts.peakLabel ? formatLastSeen(peak.x) : formatAgo(now - peak.x));
   ctx.fillStyle = '#999';
-  ctx.textAlign = 'left';
-  ctx.fillText(peakText, pad, 11);
-  ctx.fillStyle = '#ccc';
   ctx.textAlign = 'right';
-  ctx.fillText(String(Math.round(last.y)), w - pad, 11);
+  if (latestW + ctx.measureText(withWhen).width + 16 <= w - 2 * pad) peakText = withWhen;
+  ctx.fillText(peakText, w - pad, 11);
+
+  // X axis. Last tick is "now"; the rest are dates/times across the span.
+  const span = maxX - minX;
+  const nTicks = tall ? Math.max(2, Math.min(6, Math.floor(w / 110))) : 2;
+  ctx.font = '10px monospace';
+  ctx.fillStyle = '#777';
+  for (let i = 0; i < nTicks; i++) {
+    const f = nTicks === 1 ? 0 : i / (nTicks - 1);
+    const t = minX + span * f;
+    ctx.textAlign = i === 0 ? 'left' : (i === nTicks - 1 ? 'right' : 'center');
+    const label = i === nTicks - 1 ? 'now' : formatAxisTime(t, span);
+    ctx.fillText(label, i === 0 ? pad : (i === nTicks - 1 ? w - pad : xScale(t)), h - 2);
+  }
   ctx.textAlign = 'left';
+
+  // Hover readout: guide line, dot on the point, and a small box with the
+  // value and its time (clamped so it never runs off either edge).
+  if (hover >= 0 && hover < points.length) {
+    const p = points[hover];
+    const x = xScale(p.x);
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, plotTop); ctx.lineTo(Math.round(x) + 0.5, plotBottom); ctx.stroke();
+    dot(p, true);
+
+    const v = Math.round(p.y * 10) / 10;
+    const text = `${v} · ${formatLastSeen(p.x)}`;
+    ctx.font = '11px monospace';
+    const tw = ctx.measureText(text).width + 10;
+    let bx = x - tw / 2;
+    bx = Math.max(pad, Math.min(w - pad - tw, bx));
+    const by = plotTop;
+    ctx.fillStyle = '#000000d9';
+    ctx.strokeStyle = '#555';
+    ctx.fillRect(bx, by, tw, 16);
+    ctx.strokeRect(bx + 0.5, by + 0.5, tw - 1, 15);
+    ctx.fillStyle = '#eee';
+    ctx.textAlign = 'left';
+    ctx.fillText(text, bx + 5, by + 12);
+  }
 }
 
 // Q3/ET extended color codes. s4ndmod26's engine fork extends stock
