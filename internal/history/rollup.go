@@ -26,26 +26,53 @@ func StartRollup(interval time.Duration) {
 	}()
 }
 
+// Rollups only re-aggregate source rows newer than a window, not the whole
+// source collection. $merge with whenMatched:"replace" overwrites a bucket
+// with whatever the source still holds, and the sources expire (raw after
+// RawRetention, hourly after HourlyRetention) -- so an unbounded rollup
+// would keep rewriting old buckets from their expiring remnants, shrinking
+// sample_count (and skewing averages) day by day until nothing is left.
+// Each window must stay well inside the source's retention, and its start
+// is truncated to a bucket boundary (see runRollup) so a bucket is only
+// ever rebuilt from complete data, never a partial one cut off mid-bucket.
+// The generous width lets a rollup catch up after downtime.
+const (
+	hourlyRollupWindow = 48 * time.Hour
+	dailyRollupWindow  = 7 * 24 * time.Hour
+)
+
+// windowStage is the $match that restricts a rollup to source rows at or
+// after from.
+func windowStage(srcTsField string, from time.Time) bson.D {
+	return bson.D{{Key: "$match", Value: bson.D{
+		{Key: srcTsField, Value: bson.D{{Key: "$gte", Value: from}}},
+	}}}
+}
+
 func runRollup() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	if err := rollup(ctx, samplesColl, "hourly", "address", "ts", "hour_ts", "hour"); err != nil {
+	now := time.Now().UTC()
+	hourlyFrom := now.Add(-hourlyRollupWindow).Truncate(time.Hour)
+	dailyFrom := now.Add(-dailyRollupWindow).Truncate(24 * time.Hour)
+
+	if err := rollup(ctx, samplesColl, "hourly", "address", "ts", "hour_ts", "hour", hourlyFrom); err != nil {
 		log.Printf("history: per-server hourly rollup failed: %v", err)
 	}
-	if err := rollup(ctx, hourlyColl, "daily", "address", "hour_ts", "day_ts", "day"); err != nil {
+	if err := rollup(ctx, hourlyColl, "daily", "address", "hour_ts", "day_ts", "day", dailyFrom); err != nil {
 		log.Printf("history: per-server daily rollup failed: %v", err)
 	}
-	if err := rollupNetwork(ctx, networkSamplesColl, "network_hourly", "protocol", "ts", "total_players", "online_server_count", "hour_ts", "hour"); err != nil {
+	if err := rollupNetwork(ctx, networkSamplesColl, "network_hourly", "protocol", "ts", "total_players", "online_server_count", "hour_ts", "hour", hourlyFrom); err != nil {
 		log.Printf("history: network hourly rollup failed: %v", err)
 	}
-	if err := rollupNetwork(ctx, networkHourlyColl, "network_daily", "protocol", "hour_ts", "avg_players", "avg_online_servers", "day_ts", "day"); err != nil {
+	if err := rollupNetwork(ctx, networkHourlyColl, "network_daily", "protocol", "hour_ts", "avg_players", "avg_online_servers", "day_ts", "day", dailyFrom); err != nil {
 		log.Printf("history: network daily rollup failed: %v", err)
 	}
-	if err := rollupMaster(ctx, masterHostSamplesColl, "master_host_hourly", "host", "ts", "hour_ts", "hour"); err != nil {
+	if err := rollupMaster(ctx, masterHostSamplesColl, "master_host_hourly", "host", "ts", "hour_ts", "hour", hourlyFrom); err != nil {
 		log.Printf("history: master hourly rollup failed: %v", err)
 	}
-	if err := rollupMaster(ctx, masterHostHourlyColl, "master_host_daily", "host", "hour_ts", "day_ts", "day"); err != nil {
+	if err := rollupMaster(ctx, masterHostHourlyColl, "master_host_daily", "host", "hour_ts", "day_ts", "day", dailyFrom); err != nil {
 		log.Printf("history: master daily rollup failed: %v", err)
 	}
 }
@@ -54,10 +81,11 @@ func runRollup() {
 // player_count/max_players, or hourly buckets, keyed by avg/min/max_players)
 // into a per-server destination collection grouped by metaField (address) +
 // truncated time bucket, upserting via $merge.
-func rollup(ctx context.Context, src *mongo.Collection, destName, metaField, srcTsField, destTsField, truncUnit string) error {
+func rollup(ctx context.Context, src *mongo.Collection, destName, metaField, srcTsField, destTsField, truncUnit string, from time.Time) error {
 	playerField, minField, maxField, countExpr := perServerSourceFields(srcTsField)
 
 	pipeline := mongo.Pipeline{
+		windowStage(srcTsField, from),
 		{{Key: "$group", Value: bson.D{
 			{Key: "_id", Value: bson.D{
 				{Key: metaField, Value: "$" + metaField},
@@ -100,10 +128,11 @@ func rollup(ctx context.Context, src *mongo.Collection, destName, metaField, src
 // (total players / online server count) are given explicitly since the raw
 // and hourly source collections name them differently
 // (total_players/online_server_count vs avg_players/avg_online_servers).
-func rollupNetwork(ctx context.Context, src *mongo.Collection, destName, metaField, srcTsField, playersField, onlineField, destTsField, truncUnit string) error {
+func rollupNetwork(ctx context.Context, src *mongo.Collection, destName, metaField, srcTsField, playersField, onlineField, destTsField, truncUnit string, from time.Time) error {
 	countExpr := sampleCountExpr(srcTsField)
 
 	pipeline := mongo.Pipeline{
+		windowStage(srcTsField, from),
 		{{Key: "$group", Value: bson.D{
 			{Key: "_id", Value: bson.D{
 				{Key: metaField, Value: "$" + metaField},
@@ -172,8 +201,9 @@ func sampleCountExpr(srcTsField string) bson.D {
 // or hourly buckets being rolled up again into daily) into destName,
 // grouped by metaField (host) + truncated time bucket -- the same shape as
 // rollupNetwork, just with a single aggregated field instead of two.
-func rollupMaster(ctx context.Context, src *mongo.Collection, destName, metaField, srcTsField, destTsField, truncUnit string) error {
+func rollupMaster(ctx context.Context, src *mongo.Collection, destName, metaField, srcTsField, destTsField, truncUnit string, from time.Time) error {
 	pipeline := mongo.Pipeline{
+		windowStage(srcTsField, from),
 		{{Key: "$group", Value: bson.D{
 			{Key: "_id", Value: bson.D{
 				{Key: metaField, Value: "$" + metaField},
