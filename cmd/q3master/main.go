@@ -45,9 +45,7 @@ func main() {
 
 	mongoURI := os.Getenv("MONGO_URI")
 	mongoDB := os.Getenv("MONGO_DB")
-	if err := history.Init(mongoURI, mongoDB); err != nil {
-		fmt.Printf("failed to init player-count history: %v\n", err)
-	}
+	history.Start(mongoURI, mongoDB)
 
 	// 1024 gives ample headroom across today's ~1000 distinct known IPs, but
 	// raw worker count turned out not to be the real lever here: the actual
@@ -76,6 +74,7 @@ func main() {
 	http.HandleFunc("/api/poll-health", httpapi.WithCORS(httpapi.ServePollHealthAPI))
 	http.HandleFunc("/api/master-status/servers", httpapi.WithCORS(httpapi.ServeMasterServerBreakdownAPI))
 	http.HandleFunc("/api/history", httpapi.WithCORS(httpapi.ServeHistoryAPI))
+	http.HandleFunc("/api/history/status", httpapi.WithCORS(httpapi.ServeHistoryStatusAPI))
 	http.HandleFunc("/api/history/network", httpapi.WithCORS(httpapi.ServeNetworkHistoryAPI))
 	http.HandleFunc("/api/history/master/daily", httpapi.WithCORS(httpapi.ServeMasterDailyUptimeAPI))
 	http.HandleFunc("/api/ignored", httpapi.WithCORS(httpapi.ServeIgnoredAPI))
