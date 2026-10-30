@@ -55,7 +55,7 @@ func ParseRange(rangeParam string) time.Time {
 // cutoff reaches -- never raw per-minute points, see the note above
 // RawRetention in history.go.
 func GetServerHistory(ctx context.Context, address string, since time.Time) ([]Point, error) {
-	if !enabled {
+	if !enabled.Load() {
 		return []Point{}, nil
 	}
 
@@ -100,7 +100,7 @@ func GetServerHistory(ctx context.Context, address string, since time.Time) ([]P
 // recorded before a clone was known to be a duplicate read correctly. Pass
 // nil/empty if the caller has none or doesn't care.
 func GetNetworkHistory(ctx context.Context, protocol string, since time.Time, aliases map[string]int) ([]NetworkPoint, error) {
-	if !enabled {
+	if !enabled.Load() {
 		return []NetworkPoint{}, nil
 	}
 	if protocol == "" {
@@ -148,7 +148,7 @@ func GetNetworkHistory(ctx context.Context, protocol string, since time.Time, al
 // every bar must represent exactly one calendar day regardless of how
 // recent it is.
 func GetMasterDailyUptime(ctx context.Context, host string, days int) ([]MasterPoint, error) {
-	if !enabled {
+	if !enabled.Load() {
 		return []MasterPoint{}, nil
 	}
 	if days <= 0 {

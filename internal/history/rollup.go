@@ -15,12 +15,13 @@ import (
 // re-running over overlapping windows (including the still-in-progress
 // current hour/day) is safe and just refreshes the bucket.
 func StartRollup(interval time.Duration) {
-	if !enabled {
-		return
-	}
 	go func() {
 		for {
-			runRollup()
+			// History may connect after this starts (see Start), so check each
+			// pass rather than once up front.
+			if enabled.Load() {
+				runRollup()
+			}
 			time.Sleep(interval)
 		}
 	}()
