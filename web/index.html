@@ -139,8 +139,8 @@
   </div>
 
   <div class="mb-3" id="master-uptime">
-    <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-1">
-      <span class="d-flex align-items-baseline"><span class="chart-label mb-0">Official master uptime</span><span id="master-uptime-views"></span></span>
+    <div class="d-flex justify-content-between align-items-baseline">
+      <span class="chart-label mb-0">Official master uptime</span>
       <span class="chart-label mb-0" id="master-uptime-summary"></span>
     </div>
     <div class="uptime-bars" id="master-uptime-bars"></div>
@@ -360,17 +360,14 @@
     }
 
     const OFFICIAL_MASTER_HOST = 'wolfmaster.idsoftware.com:27950';
-    const MASTER_UPTIME_OPTS = {
-      host: OFFICIAL_MASTER_HOST,
-      containerId: 'master-uptime-bars',
-      summaryId: 'master-uptime-summary',
-      rangeStartId: 'master-uptime-range-start',
-      controlsId: 'master-uptime-views',
-    };
     function refreshMasterUptimeBars(){
-      refreshUptimeBar(MASTER_UPTIME_OPTS);
+      refreshUptimeBar({
+        host: OFFICIAL_MASTER_HOST,
+        containerId: 'master-uptime-bars',
+        summaryId: 'master-uptime-summary',
+        rangeStartId: 'master-uptime-range-start',
+      });
     }
-    uptimeViewControls(MASTER_UPTIME_OPTS);
 
     // Treat entries with no successful poll as "new" (hide them)
     function isNewServer(s){
