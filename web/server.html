@@ -102,6 +102,9 @@
               <input type="radio" class="btn-check" name="range" id="range-30d" value="30d" autocomplete="off">
               <label class="btn btn-outline-light" for="range-30d">30d</label>
 
+              <input type="radio" class="btn-check" name="range" id="range-90d" value="90d" autocomplete="off">
+              <label class="btn btn-outline-light" for="range-90d">90d</label>
+
               <input type="radio" class="btn-check" name="range" id="range-all" value="all" autocomplete="off">
               <label class="btn btn-outline-light" for="range-all">All</label>
             </div>
@@ -194,7 +197,7 @@
     }
 
     function loadHistory(range){
-      const label = {'7d':'7d', '30d':'30d', 'all':'all time'}[range] || range;
+      const label = {'7d':'7d', '30d':'30d', '90d':'90d', 'all':'all time'}[range] || range;
       $('#chart-label').text('Player history (' + label + ')');
       $.getJSON('/api/history?address=' + encodeURIComponent(address) + '&range=' + encodeURIComponent(range), function(points){
         const pts = (points||[]).map(p => ({ x: new Date(p.ts).getTime(), y: p.player_count }));

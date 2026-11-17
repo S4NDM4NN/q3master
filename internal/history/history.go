@@ -21,7 +21,7 @@ import (
 // Retention windows. Hourly/daily TTLs are measured from the bucket's own
 // timestamp (via a Mongo TTL index), so each gives a rolling window of that
 // length from now - not "on top of" the raw retention below. query.go's
-// GetServerHistory/GetNetworkHistory merge hourly (finest) and daily tiers
+// GetNetworkHistory merges its hourly (finest) and daily tiers
 // depending on how far back the requested range reaches, but never serve
 // raw per-minute points to a chart -- raw samples are noisy (every
 // join/leave/poll jitter is its own point), which reads as visibly rougher
@@ -33,7 +33,7 @@ import (
 // shipped to a chart request.
 const (
 	RawRetention    = 7 * 24 * time.Hour
-	HourlyRetention = 30 * 24 * time.Hour
+	HourlyRetention = 90 * 24 * time.Hour
 )
 
 var (
@@ -41,7 +41,6 @@ var (
 
 	samplesColl           *mongo.Collection
 	hourlyColl            *mongo.Collection
-	dailyColl             *mongo.Collection
 	networkSamplesColl    *mongo.Collection
 	networkHourlyColl     *mongo.Collection
 	networkDailyColl      *mongo.Collection
@@ -170,7 +169,6 @@ func Init(uri, dbName string) error {
 
 	samplesColl = db.Collection("samples")
 	hourlyColl = db.Collection("hourly")
-	dailyColl = db.Collection("daily")
 	networkSamplesColl = db.Collection("network_samples")
 	networkHourlyColl = db.Collection("network_hourly")
 	networkDailyColl = db.Collection("network_daily")
@@ -200,9 +198,6 @@ func ensureCollections(ctx context.Context) error {
 		return err
 	}
 	if err := createTieredIndexes(ctx, "hourly", "address", "hour_ts", HourlyRetention); err != nil {
-		return err
-	}
-	if err := createTieredIndexes(ctx, "daily", "address", "day_ts", 0); err != nil {
 		return err
 	}
 	if err := createTieredIndexes(ctx, "network_hourly", "protocol", "hour_ts", HourlyRetention); err != nil {
@@ -243,23 +238,48 @@ func createTimeSeries(ctx context.Context, name, metaField string, expireAfter t
 // (address for per-server collections, protocol/host for network-wide/
 // master-wide ones): a unique compound index for upsert targeting, plus (if
 // ttl > 0) a separate TTL index on the timestamp field alone (TTL indexes
-// must be single-field).
+// must be single-field). If a TTL index already exists with a different
+// expiry (HourlyRetention changed), it is dropped and recreated: Mongo
+// refuses to create the same index with other options, and collMod would
+// need a role the app's readWrite user does not have. Only the expiry
+// moves; a longer one never deletes anything, a shorter one lets the TTL
+// monitor trim the older rows.
 func createTieredIndexes(ctx context.Context, collName, metaField, tsField string, ttl time.Duration) error {
 	coll := db.Collection(collName)
-	models := []mongo.IndexModel{
-		{
-			Keys:    bson.D{{Key: metaField, Value: 1}, {Key: tsField, Value: 1}},
-			Options: options.Index().SetUnique(true),
-		},
+	if _, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{
+		Keys:    bson.D{{Key: metaField, Value: 1}, {Key: tsField, Value: 1}},
+		Options: options.Index().SetUnique(true),
+	}); err != nil {
+		return err
 	}
-	if ttl > 0 {
-		models = append(models, mongo.IndexModel{
-			Keys:    bson.D{{Key: tsField, Value: 1}},
-			Options: options.Index().SetExpireAfterSeconds(int32(ttl.Seconds())),
-		})
+	if ttl <= 0 {
+		return nil
 	}
-	_, err := coll.Indexes().CreateMany(ctx, models)
+	ttlModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: tsField, Value: 1}},
+		Options: options.Index().SetExpireAfterSeconds(int32(ttl.Seconds())),
+	}
+	_, err := coll.Indexes().CreateOne(ctx, ttlModel)
+	if err != nil && isIndexConflict(err) {
+		if err := coll.Indexes().DropOne(ctx, tsField+"_1"); err != nil {
+			return fmt.Errorf("change TTL of %s.%s: drop old index: %w", collName, tsField, err)
+		}
+		_, err = coll.Indexes().CreateOne(ctx, ttlModel)
+		if err == nil {
+			log.Printf("history: %s TTL set to %s", collName, ttl)
+		}
+	}
 	return err
+}
+
+// isIndexConflict reports IndexOptionsConflict (85) / IndexKeySpecsConflict
+// (86): an index with the same keys but other options already exists.
+func isIndexConflict(err error) bool {
+	var ce mongo.CommandError
+	if errors.As(err, &ce) {
+		return ce.Code == 85 || ce.Code == 86
+	}
+	return false
 }
 
 func isNamespaceExists(err error) bool {
@@ -283,15 +303,6 @@ type sampleDoc struct {
 type hourlyDoc struct {
 	Address     string    `bson:"address"`
 	HourTs      time.Time `bson:"hour_ts"`
-	AvgPlayers  float64   `bson:"avg_players"`
-	MinPlayers  int       `bson:"min_players"`
-	MaxPlayers  int       `bson:"max_players"`
-	SampleCount int       `bson:"sample_count"`
-}
-
-type dailyDoc struct {
-	Address     string    `bson:"address"`
-	DayTs       time.Time `bson:"day_ts"`
 	AvgPlayers  float64   `bson:"avg_players"`
 	MinPlayers  int       `bson:"min_players"`
 	MaxPlayers  int       `bson:"max_players"`

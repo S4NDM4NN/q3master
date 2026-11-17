@@ -61,9 +61,6 @@ func runRollup() {
 	if err := rollup(ctx, samplesColl, "hourly", "address", "ts", "hour_ts", "hour", hourlyFrom); err != nil {
 		log.Printf("history: per-server hourly rollup failed: %v", err)
 	}
-	if err := rollup(ctx, hourlyColl, "daily", "address", "hour_ts", "day_ts", "day", dailyFrom); err != nil {
-		log.Printf("history: per-server daily rollup failed: %v", err)
-	}
 	if err := rollupNetwork(ctx, networkSamplesColl, "network_hourly", "protocol", "ts", "total_players", "online_server_count", "hour_ts", "hour", hourlyFrom); err != nil {
 		log.Printf("history: network hourly rollup failed: %v", err)
 	}

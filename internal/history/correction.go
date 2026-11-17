@@ -47,17 +47,6 @@ func correctForAliases(ctx context.Context, points []NetworkPoint, protocol stri
             continue
         }
 
-        if since.Before(hourlyCutoff) {
-            if docs, err := queryDaily(ctx, addr, since, hourlyCutoff); err == nil {
-                for _, d := range docs {
-                    playerDelta[d.DayTs] += d.AvgPlayers
-                    if d.SampleCount > 0 {
-                        onlineDelta[d.DayTs]++
-                    }
-                }
-            }
-        }
-
         if since.Before(rawCutoff) {
             from := hourlyCutoff
             if since.After(hourlyCutoff) {

@@ -36,12 +36,14 @@ type MasterPoint struct {
 	SampleCount int       `json:"sample_count"`
 }
 
-// ParseRange converts a range query param ("7d", "30d", "all") into a cutoff
+// ParseRange converts a range query param ("7d", "30d", "90d", "all") into a cutoff
 // time. Unrecognized values fall back to "7d".
 func ParseRange(rangeParam string) time.Time {
 	now := time.Now().UTC()
 	switch rangeParam {
 	case "30d":
+		return now.Add(-30 * 24 * time.Hour)
+	case "90d":
 		return now.Add(-HourlyRetention)
 	case "all":
 		return time.Time{}
@@ -51,8 +53,8 @@ func ParseRange(rangeParam string) time.Time {
 }
 
 // GetServerHistory returns player-count history points for a server since
-// the given cutoff, merging hourly/daily tiers depending on how far back the
-// cutoff reaches -- never raw per-minute points, see the note above
+// the given cutoff from the hourly tier (kept HourlyRetention; there is no
+// per-server daily tier) -- never raw per-minute points, see the note above
 // RawRetention in history.go.
 func GetServerHistory(ctx context.Context, address string, since time.Time) ([]Point, error) {
 	if !enabled.Load() {
@@ -63,16 +65,6 @@ func GetServerHistory(ctx context.Context, address string, since time.Time) ([]P
 	hourlyCutoff := now.Add(-HourlyRetention)
 
 	points := []Point{}
-
-	if since.Before(hourlyCutoff) {
-		docs, err := queryDaily(ctx, address, since, hourlyCutoff)
-		if err != nil {
-			return nil, err
-		}
-		for _, d := range docs {
-			points = append(points, Point{Ts: d.DayTs, PlayerCount: d.AvgPlayers, MaxPlayers: d.MaxPlayers})
-		}
-	}
 
 	from := hourlyCutoff
 	if since.After(hourlyCutoff) {
@@ -211,22 +203,6 @@ func queryHourly(ctx context.Context, address string, from, to time.Time) ([]hou
 		return nil, err
 	}
 	var docs []hourlyDoc
-	if err := cur.All(ctx, &docs); err != nil {
-		return nil, err
-	}
-	return docs, nil
-}
-
-func queryDaily(ctx context.Context, address string, from, to time.Time) ([]dailyDoc, error) {
-	filter := bson.D{
-		{Key: "address", Value: address},
-		{Key: "day_ts", Value: bson.D{{Key: "$gte", Value: from}, {Key: "$lte", Value: to}}},
-	}
-	cur, err := dailyColl.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "day_ts", Value: 1}}))
-	if err != nil {
-		return nil, err
-	}
-	var docs []dailyDoc
 	if err := cur.All(ctx, &docs); err != nil {
 		return nil, err
 	}

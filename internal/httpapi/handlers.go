@@ -86,7 +86,7 @@ func ServeAllMasterStatusAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeHistoryAPI responds with player-count history for a single server.
-// Query params: address (required, "ip:port"), range ("7d" | "30d" | "all",
+// Query params: address (required, "ip:port"), range ("7d" | "30d" | "90d" | "all",
 // default "7d").
 func ServeHistoryAPI(w http.ResponseWriter, r *http.Request) {
     address := r.URL.Query().Get("address")
@@ -108,7 +108,7 @@ func ServeHistoryAPI(w http.ResponseWriter, r *http.Request) {
 
 // ServeNetworkHistoryAPI responds with network-wide history: total real
 // players and online server count over time. Query params: range ("7d" |
-// "30d" | "all", default "7d"), protocol (a Q3 protocol number e.g. "84", or
+// "30d" | "90d" | "all", default "7d"), protocol (a Q3 protocol number e.g. "84", or
 // "all" for the combined fleet, default "all").
 func ServeNetworkHistoryAPI(w http.ResponseWriter, r *http.Request) {
     since := history.ParseRange(r.URL.Query().Get("range"))
