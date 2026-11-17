@@ -112,8 +112,8 @@
                 </div>
               </div>
               <div class="card-body">
-                <div class="d-flex justify-content-between align-items-baseline">
-                  <span class="chart-label mb-0">Uptime</span>
+                <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-1">
+                  <span class="d-flex align-items-baseline"><span class="chart-label mb-0">Uptime</span><span id="${id}-views"></span></span>
                   <span class="chart-label mb-0" id="${id}-summary"></span>
                 </div>
                 <div class="uptime-bars" id="${id}-bars"></div>
@@ -124,6 +124,7 @@
               </div>
             </div>
           `);
+          uptimeViewControls(uptimeOpts(m));
         });
       }
 
@@ -132,13 +133,13 @@
         const dot = m.up ? 'online-dot' : 'offline-dot';
         $(`#${id}-dot`).removeClass('online-dot offline-dot').addClass(dot);
         $(`#${id}-label`).text(m.up ? 'reachable' : 'unreachable');
-        refreshUptimeBar({
-          host: m.host,
-          containerId: `${id}-bars`,
-          summaryId: `${id}-summary`,
-          rangeStartId: `${id}-range-start`,
-        });
+        refreshUptimeBar(uptimeOpts(m));
       });
+    }
+
+    function uptimeOpts(m){
+      const id = hostToId(m.host);
+      return { host: m.host, containerId: `${id}-bars`, summaryId: `${id}-summary`, rangeStartId: `${id}-range-start`, controlsId: `${id}-views` };
     }
 
     function refreshMasters(){
