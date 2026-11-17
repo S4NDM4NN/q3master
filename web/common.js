@@ -25,44 +25,129 @@ function uptimeBarDayCount(){
 function dayKeyUTC(d){
   return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
 }
+// --- Master uptime views -------------------------------------------------
+// The default is the day-by-day bar above (trailing 90 days, width-adaptive).
+// A "1y" or "All" view, picked per master with the small toggle that
+// uptimeViewControls() draws, shows the same daily data as a contribution-
+// style grid instead: one column per week (Sunday first), one row per
+// weekday, one cell per day. 365 slim bars would be unreadable, a grid fits a
+// year in ~53 columns and scrolls sideways beyond that. "All" starts at the
+// first day with data, so it works from day one. The choice lives only in
+// this page's memory (host -> view); a reload goes back to 90d.
+const uptimeViewState = {};
+const UPTIME_VIEWS = [['90d', '90d'], ['1y', '1y'], ['all', 'All']];
+let uptimeReq = 0;
+
+function ensureUptimeStyles(){
+  if (document.getElementById('uptime-grid-css')) return;
+  const st = document.createElement('style');
+  st.id = 'uptime-grid-css';
+  st.textContent = `
+    .uptime-views { display:inline-flex;gap:.15rem;margin-left:.6rem;vertical-align:middle; }
+    .uptime-view-btn { background:none;border:1px solid #333;color:#888;font-size:.65rem;line-height:1.3;padding:0 .4rem;border-radius:3px;cursor:pointer; }
+    .uptime-view-btn:hover { color:#ccc; }
+    .uptime-view-btn.active { color:#fff;border-color:#666;background:#222; }
+    .uptime-grid { display:grid;justify-content:start;gap:2px;margin-top:.35rem;overflow-x:auto;padding-bottom:2px; }
+    .uptime-grid .uptime-month { font-size:.65rem;color:#888;white-space:nowrap;align-self:end; }
+    .uptime-cell { aspect-ratio:1;border-radius:2px;background:#333; }
+    .uptime-cell.up { background:#4caf50; }
+    .uptime-cell.degraded { background:#f0ad4e; }
+    .uptime-cell.down { background:#f44336; }
+  `;
+  document.head.appendChild(st);
+}
+
 // opts: { host, containerId, summaryId (optional), rangeStartId (optional) }
 function refreshUptimeBar(opts){
-  const days = uptimeBarDayCount();
+  ensureUptimeStyles();
+  const view = uptimeViewState[opts.host] || '90d';
+  const barDays = uptimeBarDayCount();
+  const days = view === '90d' ? barDays : (view === '1y' ? 371 : 3650);
+  const req = ++uptimeReq;
   $.getJSON('/api/history/master/daily?host=' + encodeURIComponent(opts.host) + '&days=' + days, function(points){
+    const container = $('#' + opts.containerId);
+    if (container.data('uptimeReq') > req) return; // a newer refresh (view switch) already drew
+    container.data('uptimeReq', req);
+
     const byDay = {};
     (points || []).forEach(p => { byDay[dayKeyUTC(new Date(p.ts))] = p; });
+    const t = new Date();
+    const today = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+    // Days are UTC days (dayKeyUTC), so label them in UTC too: local time shows the previous day west of Greenwich.
+    const dayLabel = d => d.toLocaleDateString(undefined, {month:'short', day:'numeric', year: view === '90d' ? undefined : 'numeric', timeZone:'UTC'});
+    const describe = (d, p) => p
+      ? `${dayLabel(d)}: ${Math.round(p.uptime_pct)}% uptime (${p.sample_count} check${p.sample_count===1?'':'s'})`
+      : `${dayLabel(d)}: no data`;
+    const classify = p => p.uptime_pct >= 99.9 ? 'up' : (p.uptime_pct > 0 ? 'degraded' : 'down');
 
-    const today = new Date();
-    const container = $('#' + opts.containerId).empty();
-    let trackedDays = 0, upDays = 0;
+    let trackedDays = 0, upDays = 0, rangeStart;
 
-    for (let i = days - 1; i >= 0; i--){
-      const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-      d.setUTCDate(d.getUTCDate() - i);
-      const label = d.toLocaleDateString(undefined, {month:'short', day:'numeric'});
-      const p = byDay[dayKeyUTC(d)];
-
-      let cls = '', title = `${label}: no data`;
-      if (p){
-        trackedDays++;
-        if (p.uptime_pct >= 99.9){ cls = 'up'; upDays++; }
-        else if (p.uptime_pct > 0){ cls = 'degraded'; }
-        else { cls = 'down'; }
-        title = `${label}: ${Math.round(p.uptime_pct)}% uptime (${p.sample_count} check${p.sample_count===1?'':'s'})`;
+    container.empty();
+    if (view === '90d'){
+      container.removeClass('uptime-grid').addClass('uptime-bars').css('grid-template-columns', '');
+      rangeStart = new Date(today); rangeStart.setUTCDate(rangeStart.getUTCDate() - (barDays - 1));
+      for (let i = barDays - 1; i >= 0; i--){
+        const d = new Date(today); d.setUTCDate(d.getUTCDate() - i);
+        const p = byDay[dayKeyUTC(d)];
+        let cls = '';
+        if (p){ trackedDays++; cls = classify(p); if (cls === 'up') upDays++; }
+        container.append(`<div class="uptime-bar ${cls}" title="${describe(d, p)}"></div>`);
       }
-      container.append(`<div class="uptime-bar ${cls}" title="${title}"></div>`);
+    } else {
+      // 1y: the last 365 days. All: from the first day with data.
+      rangeStart = new Date(today);
+      if (view === '1y'){
+        rangeStart.setUTCDate(rangeStart.getUTCDate() - 364);
+      } else {
+        const first = (points || []).map(p => new Date(p.ts).getTime()).sort((a, b) => a - b)[0];
+        if (first !== undefined){ const f = new Date(first); rangeStart = new Date(Date.UTC(f.getUTCFullYear(), f.getUTCMonth(), f.getUTCDate())); }
+      }
+      const gridStart = new Date(rangeStart); gridStart.setUTCDate(gridStart.getUTCDate() - gridStart.getUTCDay()); // back to Sunday
+      const weeks = Math.floor((today - gridStart) / (7 * 864e5)) + 1;
+      container.removeClass('uptime-bars').addClass('uptime-grid')
+        .css('grid-template-columns', `repeat(${weeks}, minmax(8px, 18px))`);
+      for (let w = 0; w < weeks; w++){
+        const sunday = new Date(gridStart); sunday.setUTCDate(sunday.getUTCDate() + w * 7);
+        if (sunday.getUTCDate() <= 7){ // the first Sunday of a month: one label per month
+          container.append(`<div class="uptime-month" style="grid-row:1;grid-column:${w + 1} / span 3">${sunday.toLocaleDateString(undefined, {month:'short', timeZone:'UTC'})}</div>`);
+        }
+        for (let dow = 0; dow < 7; dow++){
+          const d = new Date(sunday); d.setUTCDate(d.getUTCDate() + dow);
+          if (d < rangeStart || d > today) continue;
+          const p = byDay[dayKeyUTC(d)];
+          let cls = '';
+          if (p){ trackedDays++; cls = classify(p); if (cls === 'up') upDays++; }
+          container.append(`<div class="uptime-cell ${cls}" style="grid-row:${dow + 2};grid-column:${w + 1}" title="${describe(d, p)}"></div>`);
+        }
+      }
+      container.scrollLeft(container[0].scrollWidth); // "All" past a year: start at today
     }
 
     if (opts.summaryId) {
       $('#' + opts.summaryId).text(
-        trackedDays ? `${((upDays/trackedDays)*100).toFixed(1)}% of tracked days fully up` : 'No data yet'
+        trackedDays ? `${((upDays/trackedDays)*100).toFixed(1)}% of tracked days fully up` + (view === '90d' ? '' : ` (${trackedDays} days)`) : 'No data yet'
       );
     }
     if (opts.rangeStartId) {
-      const rangeStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-      rangeStart.setUTCDate(rangeStart.getUTCDate() - (days - 1));
-      $('#' + opts.rangeStartId).text(rangeStart.toLocaleDateString(undefined, {month:'short', day:'numeric'}));
+      $('#' + opts.rangeStartId).text(rangeStart.toLocaleDateString(undefined, view === '90d' ? {month:'short', day:'numeric', timeZone:'UTC'} : {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'}));
     }
+  });
+}
+
+// Draws the 90d / 1y / All toggle into #opts.controlsId and redraws the bar on
+// a click. Call once per master; refreshUptimeBar keeps using the chosen view.
+function uptimeViewControls(opts){
+  ensureUptimeStyles();
+  const box = $('#' + opts.controlsId).empty().addClass('uptime-views');
+  const current = () => uptimeViewState[opts.host] || '90d';
+  UPTIME_VIEWS.forEach(([v, label]) => {
+    $('<button type="button" class="uptime-view-btn"></button>').text(label).attr('data-view', v)
+      .toggleClass('active', current() === v)
+      .on('click', function(){
+        uptimeViewState[opts.host] = v;
+        box.find('.uptime-view-btn').removeClass('active').filter('[data-view="' + v + '"]').addClass('active');
+        refreshUptimeBar(opts);
+      }).appendTo(box);
   });
 }
 

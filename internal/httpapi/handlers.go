@@ -128,7 +128,7 @@ func ServeNetworkHistoryAPI(w http.ResponseWriter, r *http.Request) {
 // for the trailing N days, powering a status-page-style day-by-day uptime
 // bar for one master server. Query params: host (required, e.g.
 // "wolfmaster.idsoftware.com:27950" -- see servers.knownMasters), days
-// (default 90).
+// (default 90, at most 3650).
 func ServeMasterDailyUptimeAPI(w http.ResponseWriter, r *http.Request) {
     host := r.URL.Query().Get("host")
     if host == "" {
@@ -140,6 +140,9 @@ func ServeMasterDailyUptimeAPI(w http.ResponseWriter, r *http.Request) {
     if v := r.URL.Query().Get("days"); v != "" {
         if n, err := strconv.Atoi(v); err == nil && n > 0 {
             days = n
+            if days > 3650 { // ten years: more than any data can exist
+                days = 3650
+            }
         }
     }
 
